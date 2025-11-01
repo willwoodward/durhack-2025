@@ -1,4 +1,4 @@
-ai-server/video.mp4
-ai-server/video_output.mp4
 .venv
 frames/
+ai-server/video*.mp4
+ai-server/video_output*.mp4
