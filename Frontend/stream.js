@@ -15,29 +15,16 @@ ws.onerror = (err) => {
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-  if (data.drum == "kickdrum") {
-    console.log("Kick!");
+  if (data.instrument == "piano") {
+    toggleNoteOverlay(true);
+  }else{
+    toggleNoteOverlay(false);
   }
 
   console.log(data);
-  console.log(data.drum);
+  console.log(data.instrument);
   console.log(data.bpm);
 
-  // // Update the page
-  // drumElement.textContent = drumType;
-
-  // // Optional: change color or style depending on drum
-  // switch (drumType) {
-  //     case "kickdrum":
-  //         drumElement.style.color = "red";
-  //         break;
-  //     case "snare":
-  //         drumElement.style.color = "blue";
-  //         break;
-  //     case "high_hat":
-  //         drumElement.style.color = "green";
-  //         break;
-  // }
 };
 
 ws.onclose = () => {
@@ -106,6 +93,8 @@ function toggleNoteOverlay(show){
 }
 
 let note_overlay = true;
-toggleNoteOverlay(note_overlay);
+
+
+
 // show after 3 seconds (demo)
 // setTimeout(() => toggleNoteOverlay(false), 1000);
