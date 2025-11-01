@@ -15,7 +15,7 @@ import websockets
 import json
 import threading
 
-from src.detectors import DetectionEvent, EventDetector, ClapDetector, StompDetector, SwipeDetector, WristFlickDetector, HandSectionDetector
+from src.detectors import DetectionEvent, EventDetector, ClapDetector, StompDetector, SwipeDetector, WristFlickDetector, HandSectionDetector, QuadSectionDetector
 
 
 class PoseEstimator:
@@ -44,6 +44,8 @@ class PoseEstimator:
             WristFlickDetector("right"),
             HandSectionDetector("left", num_sections=8, stability_time=0.2),
             HandSectionDetector("right", num_sections=8, stability_time=0.2),
+            QuadSectionDetector("left", num_sections=2, stability_time=0.1),
+            QuadSectionDetector("right", num_sections=2, stability_time=0.1),
             SwipeDetector("left", "left_to_right")
         ]
 
@@ -498,12 +500,12 @@ async def websocket_handler(websocket):
 
                         # Send events back to frontend
                         for event in events:
-                            if event.name in ["clap", "stomp"]:
+                            if event.name in ["clap", "stomp", "left_hand_upper", "right_hand_upper"]:
                                 # Send in format frontend expects
                                 event_payload = {
-                                    "instrument": "Drums" if event.name == "stomp" else "Clap",
+                                    "instrument": "Drums",
                                     "note": event.name.upper(),
-                                    "bpm": 120,  # TODO: Calculate actual BPM from event timing
+                                    "bpm": 120,
                                     "event_name": event.name,
                                     "onset_time": event.onset_time,
                                     "offset_time": event.offset_time

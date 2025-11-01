@@ -22,19 +22,18 @@ collider.start();
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
+
+  // Log all events
+  console.log(`🎵 ${data.event_name.toUpperCase()} detected!`, {
+    event: data.event_name,
+    onset_time: new Date(data.onset_time * 1000).toISOString(),
+    offset_time: new Date(data.offset_time * 1000).toISOString(),
+    instrument: data.instrument,
+    note: data.note,
+    bpm: data.bpm
+  });
+
   collider.handleEvent(data.event_name, data.onset_time, data.offset_time)
-  
-  // Log clap events
-  if (data.event_name === "clap") {
-    console.log("🎵 CLAP detected!", {
-      event: data.event_name,
-      onset_time: new Date(data.onset_time * 1000).toISOString(),
-      offset_time: new Date(data.offset_time * 1000).toISOString(),
-      instrument: data.instrument,
-      note: data.note,
-      bpm: data.bpm,
-    });
-  }
 
   instrument_html.textContent = data.instrument;
   note_html.textContent = "Note: " + data.note;

@@ -4,5 +4,6 @@ from .hand_section_detector import HandSectionDetector
 from .stomp_detector import StompDetector
 from .swipe_dector import SwipeDetector
 from .wrist_flick_detector import WristFlickDetector
+from .quad_section_detector import QuadSectionDetector
 
-__all__ = ["DetectionEvent", "EventDetector", "ClapDetector", "HandSectionDetector", "StompDetector", "SwipeDetector", "WristFlickDetector"]
+__all__ = ["DetectionEvent", "EventDetector", "ClapDetector", "HandSectionDetector", "StompDetector", "SwipeDetector", "WristFlickDetector", "QuadSectionDetector"]
