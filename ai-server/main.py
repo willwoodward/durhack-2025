@@ -46,7 +46,8 @@ class PoseEstimator:
             HandSectionDetector("right", num_sections=8, stability_time=0.2),
             QuadSectionDetector("left", num_sections=2, stability_time=0.1),
             QuadSectionDetector("right", num_sections=2, stability_time=0.1),
-            SwipeDetector("left", "left_to_right")
+            SwipeDetector("left", "left_to_right"),
+            SwipeDetector("right", "right_to_left")
         ]
 
         self.event_history: List[DetectionEvent] = []
