@@ -5,6 +5,8 @@ const instrument_html = document.getElementById("instrument");
 const note_html = document.getElementById("note");
 const bpm_html = document.getElementById("bpm");
 const video_container = document.getElementById("video-container");
+const topLeftBox = document.getElementById("top-left-box");
+const topRightBox = document.getElementById("top-right-box");
 
 // Connect to WebSocket server
 const ws = new WebSocket("ws://localhost:3000");
@@ -23,6 +25,18 @@ collider.start();
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
 
+  if (data.event_name === "left_hand_upper") {
+    //Make the upper left quadrant less transparent
+    topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+    topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
+  } else if (data.event_name === "right_hand_upper") {
+    topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
+    topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+  } else {
+    topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
+    topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
+  }
+
   // Log all events
   console.log(`🎵 ${data.event_name.toUpperCase()} detected!`, {
     event: data.event_name,
@@ -30,10 +44,10 @@ ws.onmessage = (event) => {
     offset_time: new Date(data.offset_time * 1000).toISOString(),
     instrument: data.instrument,
     note: data.note,
-    bpm: data.bpm
+    bpm: data.bpm,
   });
 
-  collider.handleEvent(data.event_name, data.onset_time, data.offset_time)
+  collider.handleEvent(data.event_name, data.onset_time, data.offset_time);
 
   instrument_html.textContent = data.instrument;
   note_html.textContent = "Note: " + data.note;
