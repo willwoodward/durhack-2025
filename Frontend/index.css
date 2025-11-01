@@ -9,6 +9,46 @@ html, body {
   box-sizing: inherit;
 }
 
+#stop{
+  position: fixed;
+  top: 0%;              /* distance from top */
+  width: 5%;           /* adjust size */
+  height: 5%;
+  background-color: rgb(255, 255, 255); /* semi-transparent grey/black */
+  color: rgb(0, 0, 0);           /* text color */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 10px;     /* optional rounded corners */
+  padding: 1em;
+  margin: 0.5em;
+  z-index: 900;
+}
+
+.corner-box {
+  position: fixed;
+  top: 0%;              /* distance from top */
+  width: 49.5%;           /* adjust size */
+  height: 50%;
+  background-color: rgba(0, 0, 0, 0.1); /* semi-transparent grey/black */
+  color: rgb(255, 255, 255);           /* text color */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 10px;     /* optional rounded corners */
+  padding: 0px;
+  z-index: 900;          /* stay on top of other elements */
+}
+
+.top-left {
+  left: 0px;             /* distance from left */
+}
+
+.top-right {
+  right: 0px;            /* distance from right */
+}
+
+
 #live-stream {
   position: fixed;
   top: 0;

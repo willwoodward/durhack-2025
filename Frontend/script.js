@@ -20,8 +20,6 @@ ws.onerror = (err) => {
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
 
-  
-
   // Log clap events
   if (data.event_name === "clap") {
     console.log("🎵 CLAP detected!", {
@@ -30,10 +28,9 @@ ws.onmessage = (event) => {
       offset_time: new Date(data.offset_time * 1000).toISOString(),
       instrument: data.instrument,
       note: data.note,
-      bpm: data.bpm
+      bpm: data.bpm,
     });
   }
-
 
   instrument_html.textContent = data.instrument;
   note_html.textContent = "Note: " + data.note;
@@ -80,7 +77,7 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         );
 
         // Schedule next frame (~10 fps)
-        setTimeout(sendFrames, 100);
+        setTimeout(sendFrames, 33);
       }
     })
     .catch((error) => {
