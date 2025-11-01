@@ -4,6 +4,7 @@ const ctx = canvas.getContext("2d");
 const instrument_html = document.getElementById("instrument");
 const note_html = document.getElementById("note");
 const bpm_html = document.getElementById("bpm");
+const video_container = document.getElementById("video-container");
 
 // Connect to WebSocket server
 const ws = new WebSocket("ws://localhost:3000");
@@ -18,7 +19,7 @@ ws.onerror = (err) => {
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-  instrument_html.textContent = "Instrument: " + data.instrument;
+  instrument_html.textContent =  data.instrument;
   note_html.textContent = "Note: " + data.note;
   bpm_html.textContent = "BPM: " + data.bpm;
   if (data.instrument == "Piano") {
@@ -81,7 +82,7 @@ for (let i = 0; i < numLines; i++) {
   const line = document.createElement("div");
   line.className = "overlay-line";
   line.style.top = `${((i + 1) / (numLines + 1)) * 100}vh`;
-  document.body.appendChild(line);
+  video_container.appendChild(line);
   overlayLines.push(line);
 }
 
