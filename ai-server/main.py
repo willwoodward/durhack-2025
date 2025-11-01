@@ -16,6 +16,7 @@ import asyncio
 import websockets
 import json
 import threading
+import base64
 
 
 # ==================== CONFIGURATION ====================
@@ -1140,72 +1141,75 @@ class PoseEstimator:
 connected_clients = set()
 
 async def websocket_handler(websocket):
-    """Handle WebSocket connections."""
+    """Handle WebSocket connections and process video frames from frontend."""
     connected_clients.add(websocket)
-    print(f"[WEBSOCKET] Client connected. Total clients: {len(connected_clients)}")
+    print(f"[WEBSOCKET] Frontend connected from {websocket.remote_address}. Total clients: {len(connected_clients)}")
+
+    # Create a pose estimator instance for this client
+    estimator = PoseEstimator()
+    estimator.start_unix_time = time.time()
 
     try:
-        # Keep connection alive and handle incoming messages
         async for message in websocket:
-            # Echo back or handle commands if needed
-            print(f"[WEBSOCKET] Received: {message}")
+            try:
+                # Frontend sends binary blob (JPEG image)
+                if isinstance(message, bytes):
+                    # Decode binary JPEG frame
+                    nparr = np.frombuffer(message, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+                    if frame is not None:
+                        # Process frame with pose estimation
+                        current_unix_time = time.time()
+                        _, events = estimator.process_frame(frame, current_unix_time, debug=False)
+
+                        # Send events back to frontend
+                        for event in events:
+                            if event.name in ["clap", "stomp"]:
+                                # Send in format frontend expects
+                                event_payload = {
+                                    "instrument": "Drums" if event.name == "stomp" else "Clap",
+                                    "note": event.name.upper(),
+                                    "bpm": 120,  # TODO: Calculate actual BPM from event timing
+                                    "event_name": event.name,
+                                    "onset_time": event.onset_time,
+                                    "offset_time": event.offset_time
+                                }
+                                await websocket.send(json.dumps(event_payload))
+                                print(f"[WEBSOCKET] Sent {event.name} to frontend: onset={event.onset_time:.2f}, offset={event.offset_time:.2f}")
+                    else:
+                        print("[WEBSOCKET] Failed to decode frame")
+                else:
+                    # Handle JSON messages if needed
+                    try:
+                        data = json.loads(message)
+                        print(f"[WEBSOCKET] Received JSON: {data}")
+                    except:
+                        print(f"[WEBSOCKET] Unknown message type")
+
+            except Exception as e:
+                print(f"[WEBSOCKET] Error processing frame: {e}")
+                import traceback
+                traceback.print_exc()
+
     except websockets.exceptions.ConnectionClosed:
-        pass
+        print("[WEBSOCKET] Connection closed")
     finally:
         connected_clients.remove(websocket)
-        print(f"[WEBSOCKET] Client disconnected. Total clients: {len(connected_clients)}")
-
-
-async def send_event_to_clients(event_data: dict):
-    """Send event to all connected WebSocket clients."""
-    if not connected_clients:
-        return
-
-    message = json.dumps(event_data)
-    # Send to all connected clients
-    await asyncio.gather(
-        *[client.send(message) for client in connected_clients],
-        return_exceptions=True
-    )
-
-
-def send_event_via_websocket(event: DetectionEvent):
-    """
-    Send event via WebSocket.
-    Only sends clap and stomp events.
-    """
-    # Only send clap and stomp events
-    if event.name not in ["clap", "stomp"]:
-        return
-
-    payload = {
-        "event_name": event.name,
-        "onset_time": event.onset_time,
-        "offset_time": event.offset_time
-    }
-
-    try:
-        # Schedule the coroutine in the event loop
-        asyncio.run_coroutine_threadsafe(
-            send_event_to_clients(payload),
-            websocket_loop
-        )
-        print(f"[WEBSOCKET] Sent {event.name} event: onset={payload['onset_time']:.2f}s, offset={payload['offset_time']:.2f}s")
-    except Exception as e:
-        print(f"[WEBSOCKET] Failed to send {event.name} event: {e}")
+        print(f"[WEBSOCKET] Frontend disconnected. Total clients: {len(connected_clients)}")
 
 
 # Global event loop for websocket server
 websocket_loop = None
 
-async def start_websocket_server(host='0.0.0.0', port=5000):
+async def start_websocket_server(host='0.0.0.0', port=3000):
     """Start the WebSocket server."""
     async with websockets.serve(websocket_handler, host, port):
         print(f"[WEBSOCKET] Server started on ws://{host}:{port}")
         await asyncio.Future()  # Run forever
 
 
-def run_websocket_server(host='0.0.0.0', port=5000):
+def run_websocket_server(host='0.0.0.0', port=3000):
     """Run WebSocket server in a separate thread."""
     global websocket_loop
     websocket_loop = asyncio.new_event_loop()
@@ -1217,13 +1221,13 @@ def run_websocket_server(host='0.0.0.0', port=5000):
 
 
 def main():
-    """Main entry point for testing."""
+    """Main entry point."""
     # Parse simple command-line args
-    source = 0  # Default to camera 0
+    source = None  # No video source by default
     show_window = False
     debug = False
     output_video = None
-    run_server = False  # Whether to run Flask server
+    run_server = False
 
     if len(sys.argv) > 1 and sys.argv[1] not in ['--show', '--debug', '--output', '--server']:
         # First arg is either camera index or video file path
@@ -1258,35 +1262,45 @@ def main():
 
     if len(sys.argv) == 1:
         print("Usage:")
-        print(f"  {sys.argv[0]}                              # Use camera 0")
-        print(f"  {sys.argv[0]} 1                            # Use camera 1")
-        print(f"  {sys.argv[0]} video.mp4                    # Use video file")
-        print(f"  {sys.argv[0]} video.mp4 --debug            # Show debug info")
-        print(f"  {sys.argv[0]} video.mp4 --output out.mp4   # Save output video")
-        print(f"  {sys.argv[0]} video.mp4 --server           # Run web server and POST events")
-        print(f"  {sys.argv[0]} video.mp4 --debug --server   # Debug + server")
+        print(f"  {sys.argv[0]} --server                          # Run WebSocket server for frontend")
+        print(f"  {sys.argv[0]} video.mp4                         # Debug: Process video file")
+        print(f"  {sys.argv[0]} video.mp4 --debug                 # Debug: Show debug visualizations")
+        print(f"  {sys.argv[0]} video.mp4 --server --debug        # Debug: Video file + WebSocket server")
+        print(f"  {sys.argv[0]} 0                                 # Debug: Use camera 0")
         print()
-        print("Running with default camera 0...")
-        print()
+        print("Running WebSocket server only (production mode)...")
+        run_server = True
 
     # Start WebSocket server if requested
     if run_server:
-        print("Starting WebSocket server on ws://0.0.0.0:5000")
+        print("=" * 50)
+        print("Starting AI Pose Estimation WebSocket Server")
+        print("=" * 50)
         server_thread = threading.Thread(target=run_websocket_server, daemon=True)
         server_thread.start()
         time.sleep(1)  # Give server time to start
-        print("WebSocket server started. Connect to ws://localhost:5000")
-        print("Events will be sent as JSON messages")
+        print("✓ WebSocket server started on ws://0.0.0.0:3000")
+        print("✓ Frontend should connect to: ws://localhost:3000")
+        print("✓ Receives: Binary JPEG frames")
+        print("✓ Sends: JSON events with {instrument, note, bpm, event_name, onset_time, offset_time}")
+        print()
 
-    # Create pose estimator with event callback if server is running
-    event_callback = send_event_via_websocket if run_server else None
-    estimator = PoseEstimator(event_callback=event_callback)
-
-    # Example: Add custom detectors
-    # estimator.add_detector(YourCustomDetector())
-
-    # Run the system
-    estimator.run(source=source, show_window=show_window, debug=debug, output_video=output_video)
+    # Run debug video processing if source is provided
+    if source is not None:
+        print("Running debug video processor...")
+        estimator = PoseEstimator()
+        estimator.run(source=source, show_window=show_window, debug=debug, output_video=output_video)
+    elif run_server:
+        # Server-only mode: keep running
+        print("Server running. Press Ctrl+C to stop.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nShutting down...")
+    else:
+        print("Error: Please specify --server or provide a video source")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
