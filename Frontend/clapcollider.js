@@ -16,8 +16,8 @@ class ClapCollider {
   get_instrument(event) {
     const instruments = {
       clap: "bd",
-      snare: "sd",
-      hihat: "hh",
+      left_hand_upper: "sd",
+      right_hand_upper: "hh",
     };
     return instruments[event];
   }
@@ -73,6 +73,7 @@ class ClapCollider {
 
   stop() {
     hush();
+    this.patterns = new Map();
   }
 }
 
