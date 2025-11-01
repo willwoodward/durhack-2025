@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Pose estimation and event detection system using MediaPipe.
-Detects events like hand clapping, foot stomping, and hand hits.
+Detects events like hand clapping, foot stomping, and wrist flicks.
 """
 
 import cv2
@@ -12,6 +12,34 @@ from typing import List, Optional, Tuple
 from dataclasses import dataclass
 import time
 import sys
+
+
+# ==================== CONFIGURATION ====================
+# Adjust these values to tune detection sensitivity
+
+# Clap Detection
+CLAP_DISTANCE_THRESHOLD = 0.5      # Max distance between hands to detect clap (lower = stricter)
+CLAP_DISTANCE_APART = 0.5          # Min distance to consider hands "apart" before clapping
+CLAP_STABILITY_FRAMES = 3           # Consecutive frames needed to confirm clap
+CLAP_COOLDOWN = 0.5                 # Seconds between clap detections
+
+# Stomp Detection
+STOMP_VELOCITY_THRESHOLD = 0.5      # Min downward velocity to detect stomp (higher = stricter)
+STOMP_STABILITY_FRAMES = 2          # Consecutive frames needed to confirm stomp
+STOMP_COOLDOWN = 0.5                # Seconds between stomp detections
+
+# Wrist Flick Detection (quick snapping motion)
+FLICK_VELOCITY_THRESHOLD = 0.8      # Min linear speed of hand center to detect a flick
+FLICK_DIRECTION_CHANGE = 0.5        # Max dot product between consecutive velocity vectors
+FLICK_MIN_HAND_DISTANCE = 0.4       # Min distance between hands to avoid triggering on claps
+FLICK_STABILITY_FRAMES = 1          # Number of consecutive frames motion must meet thresholds
+FLICK_COOLDOWN = 0.15               # Minimum seconds between flick detections
+
+
+# Visibility Thresholds
+MIN_VISIBILITY = 0.5                # Min landmark visibility to detect events (0-1)
+
+# =======================================================
 
 
 @dataclass
@@ -60,33 +88,154 @@ class EventDetector(ABC):
         """Record that a detection occurred."""
         self.last_detection_time = frame_time
 
+    # Helper methods for common detection patterns
+    def check_threshold_stable(self, value: float, threshold: float,
+                               below: bool, frame_counter: int,
+                               required_frames: int) -> Tuple[int, bool]:
+        """
+        Check if a value stays below/above a threshold for consecutive frames.
+
+        Args:
+            value: Current value to check
+            threshold: Threshold to compare against
+            below: If True, check if value < threshold; if False, check if value > threshold
+            frame_counter: Current count of consecutive frames meeting condition
+            required_frames: Number of consecutive frames required
+
+        Returns:
+            Tuple of (new_frame_counter, condition_met)
+        """
+        if below:
+            condition_met = value < threshold
+        else:
+            condition_met = value > threshold
+
+        if condition_met:
+            frame_counter += 1
+        else:
+            frame_counter = 0
+
+        return frame_counter, (frame_counter >= required_frames)
+
+    def calculate_distance_3d(self, point1, point2) -> float:
+        """
+        Calculate 3D Euclidean distance between two landmarks.
+
+        Args:
+            point1: First landmark with x, y, z coordinates
+            point2: Second landmark with x, y, z coordinates
+
+        Returns:
+            Distance as float
+        """
+        return np.sqrt(
+            (point1.x - point2.x)**2 +
+            (point1.y - point2.y)**2 +
+            (point1.z - point2.z)**2
+        )
+
+    def check_visibility(self, *landmarks, min_visibility: float = MIN_VISIBILITY) -> bool:
+        """
+        Check if all provided landmarks meet minimum visibility threshold.
+
+        Args:
+            *landmarks: Variable number of landmarks to check
+            min_visibility: Minimum visibility threshold (0-1)
+
+        Returns:
+            True if all landmarks are visible enough, False otherwise
+        """
+        return all(landmark.visibility >= min_visibility for landmark in landmarks)
+
 
 class ClapDetector(EventDetector):
     """Detects hand clapping gestures."""
 
-    def __init__(self, distance_threshold: float = 0.1):
-        super().__init__("clap", cooldown=0.3)
-        self.distance_threshold = distance_threshold
+    def __init__(self):
+        super().__init__("clap", cooldown=CLAP_COOLDOWN)
+        self.distance_threshold = CLAP_DISTANCE_THRESHOLD
+        self.distance_apart = CLAP_DISTANCE_APART
         self.was_apart = True  # Track if hands were apart
+        self.stability_frames = CLAP_STABILITY_FRAMES
+        self.close_frame_count = 0  # Count consecutive frames hands are close
+        self.apart_frame_count = 0  # Count consecutive frames hands are apart
+
+        # Debug info
+        self.current_distance = 0
+        self.current_state = "unknown"  # "close", "apart", "medium", or "low_visibility"
+        self.just_detected = False  # Flag to show green flash on detection
+
+    def _get_hand_landmarks(self, landmarks):
+        """Extract left and right wrist landmarks."""
+        left_wrist = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value]
+        right_wrist = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value]
+        return left_wrist, right_wrist
+
+    def _are_hands_apart(self, distance: float) -> bool:
+        """Check if hands are far enough apart to be considered separated."""
+        return distance > self.distance_apart
+
+    def _are_hands_close(self, distance: float) -> bool:
+        """Check if hands are close enough to potentially be clapping."""
+        return distance < self.distance_threshold
+
+    def _update_hand_state(self, distance: float) -> None:
+        """
+        Update frame counters and state based on current hand distance.
+
+        This tracks whether hands are consistently close or apart across frames,
+        which is essential for detecting a deliberate clap vs. random movement.
+        """
+        if self._are_hands_close(distance):
+            self.close_frame_count += 1
+            self.apart_frame_count = 0
+            self.current_state = "close"
+        elif self._are_hands_apart(distance):
+            self.apart_frame_count += 1
+            self.close_frame_count = 0
+            self.current_state = "apart"
+        else:
+            # In-between state, don't reset counters completely
+            self.current_state = "medium"
+
+        # Update was_apart flag if hands have been consistently apart
+        if self.apart_frame_count >= self.stability_frames:
+            self.was_apart = True
+
+    def _reset_state(self, state: str = "unknown") -> None:
+        """Reset frame counters and set current state."""
+        self.close_frame_count = 0
+        self.apart_frame_count = 0
+        self.current_state = state
+        self.just_detected = False
 
     def detect(self, landmarks, frame_time: float) -> Optional[DetectionEvent]:
         if not self.can_detect(frame_time):
+            self._reset_state("cooldown")
             return None
 
         # Get hand landmarks
-        left_wrist = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value]
-        right_wrist = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value]
+        left_wrist, right_wrist = self._get_hand_landmarks(landmarks)
 
-        # Calculate distance between hands
-        distance = np.sqrt(
-            (left_wrist.x - right_wrist.x)**2 +
-            (left_wrist.y - right_wrist.y)**2 +
-            (left_wrist.z - right_wrist.z)**2
-        )
+        # Check visibility - reset counters if hands aren't visible
+        if not self.check_visibility(left_wrist, right_wrist):
+            # Reset counters when visibility drops to prevent false detections from jumping landmarks
+            self._reset_state("low_visibility")
+            return None
 
-        # Detect clap: hands were apart and are now together
-        if distance < self.distance_threshold and self.was_apart:
+        # Calculate distance between hands using helper
+        distance = self.calculate_distance_3d(left_wrist, right_wrist)
+        self.current_distance = distance
+
+        # Update frame counters and state
+        self._update_hand_state(distance)
+
+        # Detect clap: hands close for multiple frames AND were previously apart
+        if self.close_frame_count >= self.stability_frames and self.was_apart:
             self.was_apart = False
+            self.close_frame_count = 0
+            self.apart_frame_count = 0
+            self.just_detected = True
             self.record_detection(frame_time)
             return DetectionEvent(
                 name=self.name,
@@ -94,8 +243,8 @@ class ClapDetector(EventDetector):
                 confidence=1.0 - (distance / self.distance_threshold),
                 metadata={"distance": distance}
             )
-        elif distance > self.distance_threshold * 1.5:
-            self.was_apart = True
+        else:
+            self.just_detected = False
 
         return None
 
@@ -103,87 +252,255 @@ class ClapDetector(EventDetector):
 class StompDetector(EventDetector):
     """Detects foot stomping (rapid downward foot movement)."""
 
-    def __init__(self, velocity_threshold: float = 0.15):
-        super().__init__("stomp", cooldown=0.4)
-        self.velocity_threshold = velocity_threshold
+    def __init__(self):
+        super().__init__("stomp", cooldown=STOMP_COOLDOWN)
+        self.velocity_threshold = STOMP_VELOCITY_THRESHOLD
         self.prev_foot_positions = None
         self.prev_time = None
+        self.stability_frames = STOMP_STABILITY_FRAMES
+        self.high_velocity_count = 0
 
     def detect(self, landmarks, frame_time: float) -> Optional[DetectionEvent]:
         # Get foot landmarks
         left_ankle = landmarks[mp.solutions.pose.PoseLandmark.LEFT_ANKLE.value]
         right_ankle = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_ANKLE.value]
 
+        # Check visibility - skip if feet aren't visible
+        if left_ankle.visibility < MIN_VISIBILITY and right_ankle.visibility < MIN_VISIBILITY:
+            return None
+
         current_positions = {
             'left': np.array([left_ankle.x, left_ankle.y, left_ankle.z]),
             'right': np.array([right_ankle.x, right_ankle.y, right_ankle.z])
         }
 
+        detected_foot = None
+        max_velocity = 0
+
         if self.prev_foot_positions is not None and self.prev_time is not None:
             dt = frame_time - self.prev_time
-            if dt > 0:
-                # Check each foot for stomp
+            if dt > 0 and dt < 0.5:  # Ignore large time gaps
+                # Check each foot for stomp (only if visible)
                 for foot_name, current_pos in current_positions.items():
+                    # Check if this specific foot is visible
+                    ankle = left_ankle if foot_name == 'left' else right_ankle
+                    if ankle.visibility < MIN_VISIBILITY:
+                        continue
+
                     prev_pos = self.prev_foot_positions[foot_name]
 
                     # Calculate vertical velocity (y-axis, positive is downward)
                     vertical_velocity = (current_pos[1] - prev_pos[1]) / dt
 
-                    # Detect stomp: rapid downward movement followed by stop
-                    if vertical_velocity > self.velocity_threshold and self.can_detect(frame_time):
-                        self.record_detection(frame_time)
-                        self.prev_foot_positions = current_positions
-                        self.prev_time = frame_time
-                        return DetectionEvent(
-                            name=self.name,
-                            timestamp=frame_time,
-                            confidence=min(1.0, vertical_velocity / (self.velocity_threshold * 2)),
-                            metadata={"foot": foot_name, "velocity": vertical_velocity}
-                        )
+                    if vertical_velocity > self.velocity_threshold:
+                        if vertical_velocity > max_velocity:
+                            max_velocity = vertical_velocity
+                            detected_foot = foot_name
+
+        # Track stability
+        if detected_foot and max_velocity > self.velocity_threshold:
+            self.high_velocity_count += 1
+        else:
+            self.high_velocity_count = 0
+
+        # Only trigger after seeing high velocity for multiple frames
+        if self.high_velocity_count >= self.stability_frames and self.can_detect(frame_time):
+            self.record_detection(frame_time)
+            self.high_velocity_count = 0
+            self.prev_foot_positions = current_positions
+            self.prev_time = frame_time
+            return DetectionEvent(
+                name=self.name,
+                timestamp=frame_time,
+                confidence=min(1.0, max_velocity / (self.velocity_threshold * 2)),
+                metadata={"foot": detected_foot, "velocity": max_velocity}
+            )
 
         self.prev_foot_positions = current_positions
         self.prev_time = frame_time
         return None
 
 
-class RightHandHitDetector(EventDetector):
-    """Detects when right hand makes a hitting motion (rapid forward movement)."""
+class WristFlickDetector(EventDetector):
+    """
+    Detects quick wrist flicking motion using wrist + finger + forearm rotation.
+    Combines linear velocity of hand center and angular velocity of wrist vector.
+    """
 
-    def __init__(self, velocity_threshold: float = 0.3):
-        super().__init__("right_hand_hit", cooldown=0.4)
-        self.velocity_threshold = velocity_threshold
+    def __init__(self, hand: str):
+        self.hand = hand
+        name = "left_hand_flick" if hand == "left" else "right_hand_flick"
+        super().__init__(name, cooldown=FLICK_COOLDOWN)
+
+        # thresholds
+        self.velocity_threshold = FLICK_VELOCITY_THRESHOLD
+        self.angular_threshold = 0.6  # Min angular change (radians/frame) to count as flick
+        self.stability_frames = FLICK_STABILITY_FRAMES
+
+        # state
         self.prev_position = None
+        self.prev_wrist_vector = None  # vector along forearm (wrist -> elbow)
         self.prev_time = None
+        self.flick_frame_count = 0
+
+        # debug
+        self.current_speed = 0
+        self.current_angular_velocity = 0
+        self.just_detected = False
+
+        # fingertips indices
+        self.finger_tip_ids = [
+            mp.solutions.hands.HandLandmark.THUMB_TIP,
+            mp.solutions.hands.HandLandmark.INDEX_FINGER_TIP,
+            mp.solutions.hands.HandLandmark.MIDDLE_FINGER_TIP,
+            mp.solutions.hands.HandLandmark.RING_FINGER_TIP,
+            mp.solutions.hands.HandLandmark.PINKY_TIP,
+        ]
+
+        # elbow landmark index (for rotation vector)
+        if hand == "left":
+            self.elbow_id = mp.solutions.pose.PoseLandmark.LEFT_ELBOW.value
+            self.wrist_id = mp.solutions.pose.PoseLandmark.LEFT_WRIST.value
+        else:
+            self.elbow_id = mp.solutions.pose.PoseLandmark.RIGHT_ELBOW.value
+            self.wrist_id = mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value
+
+    def get_hand_center(self, landmarks):
+        """Average wrist + fingertips to get smooth hand center."""
+        wrist = landmarks[self.wrist_id]
+        points = [wrist]
+        for tip_id in self.finger_tip_ids:
+            points.append(landmarks[tip_id])
+        xyz = np.array([[p.x, p.y, p.z] for p in points])
+        return np.mean(xyz, axis=0)
+
+    def get_wrist_vector(self, landmarks):
+        """Vector along forearm: wrist -> elbow."""
+        wrist = landmarks[self.wrist_id]
+        elbow = landmarks[self.elbow_id]
+        return np.array([elbow.x - wrist.x, elbow.y - wrist.y, elbow.z - wrist.z])
 
     def detect(self, landmarks, frame_time: float) -> Optional[DetectionEvent]:
-        # Get right hand landmark
-        right_wrist = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value]
-        current_position = np.array([right_wrist.x, right_wrist.y, right_wrist.z])
+        if not self.can_detect(frame_time) or landmarks is None:
+            return None
 
-        if self.prev_position is not None and self.prev_time is not None:
+        # Hand center for linear velocity
+        current_position = self.get_hand_center(landmarks)
+        wrist_vector = self.get_wrist_vector(landmarks)
+
+        linear_speed = 0
+        angular_velocity = 0
+
+        if self.prev_position is not None and self.prev_wrist_vector is not None and self.prev_time is not None:
             dt = frame_time - self.prev_time
-            if dt > 0 and self.can_detect(frame_time):
-                # Calculate velocity
+            if dt > 0 and dt < 0.5:
+                # linear velocity
                 displacement = current_position - self.prev_position
-                velocity = np.linalg.norm(displacement) / dt
+                linear_speed = np.linalg.norm(displacement) / dt
+                self.current_speed = linear_speed
 
-                # Check if it's a forward motion (negative z-direction in MediaPipe)
-                forward_motion = displacement[2] < -0.02
+                # angular velocity (angle change between forearm vectors)
+                prev_vec_norm = self.prev_wrist_vector / (np.linalg.norm(self.prev_wrist_vector) + 1e-6)
+                curr_vec_norm = wrist_vector / (np.linalg.norm(wrist_vector) + 1e-6)
+                dot = np.clip(np.dot(prev_vec_norm, curr_vec_norm), -1.0, 1.0)
+                angle_change = np.arccos(dot)  # radians/frame
+                angular_velocity = angle_change / dt
+                self.current_angular_velocity = angular_velocity
 
-                if velocity > self.velocity_threshold and forward_motion:
+                # check if flick: high speed + high angular velocity
+                if linear_speed > self.velocity_threshold and angular_velocity > self.angular_threshold:
+                    self.flick_frame_count += 1
+                else:
+                    self.flick_frame_count = 0
+                    self.just_detected = False
+
+                # trigger detection if stable enough
+                if self.flick_frame_count >= self.stability_frames:
                     self.record_detection(frame_time)
+                    self.flick_frame_count = 0
+                    self.just_detected = True
                     self.prev_position = current_position
+                    self.prev_wrist_vector = wrist_vector
                     self.prev_time = frame_time
                     return DetectionEvent(
                         name=self.name,
                         timestamp=frame_time,
-                        confidence=min(1.0, velocity / (self.velocity_threshold * 2)),
-                        metadata={"velocity": velocity}
+                        confidence=min(1.0, linear_speed / (self.velocity_threshold * 2)),
+                        metadata={
+                            "hand": self.hand,
+                            "speed": linear_speed,
+                            "angular_velocity": angular_velocity
+                        }
                     )
 
+        # update previous
         self.prev_position = current_position
+        self.prev_wrist_vector = wrist_vector
         self.prev_time = frame_time
         return None
+
+class HandSectionDetector(EventDetector):
+    """
+    Detects when a hand is inside one of N horizontal screen sections.
+    Waits for the hand to stay in that section for a short time before firing.
+    """
+
+    def __init__(self, hand: str, num_sections: int = 8, stability_time: float = 0.2):
+        """
+        :param hand: "left" or "right"
+        :param num_sections: number of vertical sections from top to bottom
+        :param stability_time: minimum time (s) hand must stay in section
+        """
+        self.hand = hand
+        self.num_sections = num_sections
+        self.stability_time = stability_time
+        self.prev_section = None
+        self.section_enter_time = None
+
+        name = f"{hand}_section_detector"
+        super().__init__(name, cooldown=0)  # cooldown handled by stability_time
+
+        if hand == "left":
+            self.wrist_id = mp.solutions.pose.PoseLandmark.LEFT_WRIST.value
+        else:
+            self.wrist_id = mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value
+
+    def detect(self, landmarks, frame_time: float) -> Optional[DetectionEvent]:
+        if landmarks is None:
+            self.prev_section = None
+            self.section_enter_time = None
+            return None
+
+        wrist = landmarks[self.wrist_id]
+        y_pos = wrist.y  # normalized 0 (top) → 1 (bottom)
+
+        # Determine which section the hand is in
+        section_height = 1.0 / self.num_sections
+        section_index = min(int(y_pos / section_height), self.num_sections - 1)
+
+        if self.prev_section != section_index:
+            # Hand moved to a new section
+            self.prev_section = section_index
+            self.section_enter_time = frame_time
+            return None
+        else:
+            # Hand is in same section
+            time_in_section = frame_time - (self.section_enter_time or frame_time)
+            if time_in_section >= self.stability_time:
+                self.record_detection(frame_time)
+                return DetectionEvent(
+                    name=self.name,
+                    timestamp=frame_time,
+                    confidence=1.0,
+                    metadata={
+                        "hand": self.hand,
+                        "section": section_index,
+                        "time_in_section": time_in_section
+                    }
+                )
+        return None
+
+
 
 
 class PoseEstimator:
@@ -207,7 +524,10 @@ class PoseEstimator:
         self.detectors = detectors or [
             ClapDetector(),
             StompDetector(),
-            RightHandHitDetector()
+            WristFlickDetector("left"),
+            WristFlickDetector("right"),
+            HandSectionDetector("left", num_sections=8, stability_time=0.2),
+            HandSectionDetector("right", num_sections=8, stability_time=0.2)
         ]
 
         self.event_history: List[DetectionEvent] = []
@@ -258,11 +578,57 @@ class PoseEstimator:
             )
 
             if debug:
-                debug_info.append(f"Hand dist: {hand_distance:.3f}")
+                # Get ankle visibility for debug
+                left_ankle = landmarks[mp.solutions.pose.PoseLandmark.LEFT_ANKLE.value]
+                right_ankle = landmarks[mp.solutions.pose.PoseLandmark.RIGHT_ANKLE.value]
+
+                # Get detector info
+                clap_detector = None
+                left_flick = None
+                right_flick = None
+                for detector in self.detectors:
+                    if isinstance(detector, ClapDetector):
+                        clap_detector = detector
+                    elif isinstance(detector, WristFlickDetector):
+                        if detector.hand == "left":
+                            left_flick = detector
+                        else:
+                            right_flick = detector
+
+                # Clap detection debug
+                if clap_detector:
+                    state_colors = {
+                        "close": "CLOSE",
+                        "apart": "APART",
+                        "medium": "MEDIUM",
+                        "low_visibility": "LOW_VIS",
+                        "cooldown": "COOLDOWN"
+                    }
+                    state_str = state_colors.get(clap_detector.current_state, "UNKNOWN")
+                    debug_info.append(f"Clap: {state_str} | Close:{clap_detector.close_frame_count}/{CLAP_STABILITY_FRAMES} Apart:{clap_detector.apart_frame_count}/{CLAP_STABILITY_FRAMES}")
+                    debug_info.append(f"Hand dist: {clap_detector.current_distance:.3f} (threshold: {CLAP_DISTANCE_THRESHOLD})")
+
+                debug_info.append(f"Hand vis: L:{left_wrist.visibility:.2f} R:{right_wrist.visibility:.2f}")
+
+                if left_flick:
+                    debug_info.append(f"L Wrist: spd={left_flick.current_speed:.2f} dir={left_flick.current_angular_velocity:.2f} [{left_flick.flick_frame_count}/{FLICK_STABILITY_FRAMES}]")
+                if right_flick:
+                    debug_info.append(f"R Wrist: spd={right_flick.current_speed:.2f} dir={right_flick.current_angular_velocity:.2f} [{right_flick.flick_frame_count}/{FLICK_STABILITY_FRAMES}]")
+
                 # Also print to console occasionally
                 if hasattr(self, '_last_debug_print'):
                     if frame_time - self._last_debug_print > 0.5:  # Print every 0.5s
-                        print(f"[DEBUG] Hand distance: {hand_distance:.3f} (threshold: 0.1)")
+                        clap_info = ""
+                        if clap_detector:
+                            clap_info = f"Clap: {clap_detector.current_state} Close:{clap_detector.close_frame_count}/{CLAP_STABILITY_FRAMES}"
+
+                        flick_info = ""
+                        if left_flick:
+                            flick_info += f" | L_Flick: S:{left_flick.current_speed:.2f} D:{left_flick.current_angular_velocity:.2f} [{left_flick.flick_frame_count}/{FLICK_STABILITY_FRAMES}]"
+                        if right_flick:
+                            flick_info += f" | R_Flick: S:{right_flick.current_speed:.2f} D:{right_flick.current_angular_velocity:.2f} [{right_flick.flick_frame_count}/{FLICK_STABILITY_FRAMES}]"
+
+                        print(f"[DEBUG] {clap_info}{flick_info}")
                         self._last_debug_print = frame_time
                 else:
                     self._last_debug_print = frame_time
@@ -294,11 +660,96 @@ class PoseEstimator:
                 left_x, left_y = int(left_wrist.x * w), int(left_wrist.y * h)
                 right_x, right_y = int(right_wrist.x * w), int(right_wrist.y * h)
 
-                # Color based on distance (green = close, red = far)
-                color = (0, 255, 0) if hand_distance < 0.1 else (0, 165, 255) if hand_distance < 0.15 else (0, 0, 255)
-                cv2.line(image, (left_x, left_y), (right_x, right_y), color, 2)
-                cv2.circle(image, (left_x, left_y), 5, (255, 0, 0), -1)
-                cv2.circle(image, (right_x, right_y), 5, (0, 0, 255), -1)
+                # Get clap detector for visualization
+                clap_det = None
+                for det in self.detectors:
+                    if isinstance(det, ClapDetector):
+                        clap_det = det
+                        break
+
+                # Line color: green ONLY when clap just detected, otherwise white
+                if clap_det and clap_det.just_detected:
+                    color = (0, 255, 0)  # Bright green on detection
+                    thickness = 4
+                else:
+                    color = (255, 255, 255)  # White normally
+                    thickness = 1
+
+                cv2.line(image, (left_x, left_y), (right_x, right_y), color, thickness)
+
+                # Draw wrist flick debug indicators
+                for detector in self.detectors:
+                    if isinstance(detector, WristFlickDetector):
+                        if detector.hand == "left":
+                            wrist_x, wrist_y = left_x, left_y
+                        else:
+                            wrist_x, wrist_y = right_x, right_y
+
+                        # Only show green circle when flick just detected
+                        if detector.just_detected:
+                            # Bright green flash on detection
+                            radius = 30
+                            circle_color = (0, 255, 0)
+                            cv2.circle(image, (wrist_x, wrist_y), radius, circle_color, 4)
+
+                            # Show which hand
+                            hand_label = "R" if detector.hand == "right" else "L"
+                            offset_x = 40 if detector.hand == "right" else -70
+                            text_x = wrist_x + offset_x
+                            text_y = wrist_y
+                            cv2.putText(image, f"{hand_label}-FLICK!", (text_x, text_y),
+                                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+                # Draw section detection visual cues
+                left_section_det = None
+                right_section_det = None
+                for detector in self.detectors:
+                    if isinstance(detector, HandSectionDetector):
+                        if detector.hand == "left":
+                            left_section_det = detector
+                        else:
+                            right_section_det = detector
+
+                # Draw section boundaries and highlights
+                if left_section_det or right_section_det:
+                    # Use the first detector's num_sections (should be same for both)
+                    num_sections = left_section_det.num_sections if left_section_det else right_section_det.num_sections
+                    section_height = h / num_sections
+
+                    # Draw horizontal lines for section boundaries (subtle gray)
+                    for i in range(1, num_sections):
+                        y = int(i * section_height)
+                        cv2.line(image, (0, y), (w, y), (100, 100, 100), 1)
+
+                    # Highlight left hand's section (appears on RIGHT side of screen due to mirror)
+                    if left_section_det and left_section_det.prev_section is not None:
+                        section_idx = left_section_det.prev_section
+                        y_top = int(section_idx * section_height)
+                        y_bottom = int((section_idx + 1) * section_height)
+
+                        # Draw colored overlay on right half (left hand appears on right due to mirror)
+                        overlay = image.copy()
+                        cv2.rectangle(overlay, (w // 2, y_top), (w, y_bottom), (255, 0, 0), -1)  # Blue for left
+                        cv2.addWeighted(overlay, 0.2, image, 0.8, 0, image)
+
+                        # Add section number
+                        cv2.putText(image, f"L-{section_idx}", (w - 100, y_top + 30),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+                    # Highlight right hand's section (appears on LEFT side of screen due to mirror)
+                    if right_section_det and right_section_det.prev_section is not None:
+                        section_idx = right_section_det.prev_section
+                        y_top = int(section_idx * section_height)
+                        y_bottom = int((section_idx + 1) * section_height)
+
+                        # Draw colored overlay on left half (right hand appears on left due to mirror)
+                        overlay = image.copy()
+                        cv2.rectangle(overlay, (0, y_top), (w // 2, y_bottom), (0, 255, 0), -1)  # Green for right
+                        cv2.addWeighted(overlay, 0.2, image, 0.8, 0, image)
+
+                        # Add section number
+                        cv2.putText(image, f"R-{section_idx}", (10, y_top + 30),
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
         else:
             if debug:
