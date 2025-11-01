@@ -19,25 +19,27 @@ ws.onerror = (err) => {
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-  if (data.instrument === "Piano") {
-    instrument_html.innerHTML = `Piano 
-      <img src="../Icons/piano.png" alt="Piano" 
-           style="width: 60px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
-  } else if (data.instrument === "Kickdrum") {
-    instrument_html.innerHTML = `Kick Drum 
-      <img src="../Icons/kick.png" alt="Kick Drum" 
-           style="width: 40px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
-  } else if (data.instrument === "Snare") {
-    instrument_html.innerHTML = `Snare 
-      <img src="../Icons/snare.png" alt="Snare" 
-           style="width: 40px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
-  } else if (data.instrument === "High Hat") {
-    instrument_html.innerHTML = `High Hat 
-      <img src="../Icons/highhat.png" alt="High Hat" 
-           style="width: 40px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
-  } else {
-    instrument_html.textContent = data.instrument;
-  }
+  // if (data.instrument === "Piano") {
+  //   instrument_html.innerHTML = `Piano
+  //     <img src="../Icons/piano.png" alt="Piano"
+  //          style="width: 60px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
+  // } else if (data.instrument === "Kickdrum") {
+  //   instrument_html.innerHTML = `Kick Drum
+  //     <img src="../Icons/kick.png" alt="Kick Drum"
+  //          style="width: 40px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
+  // } else if (data.instrument === "Snare") {
+  //   instrument_html.innerHTML = `Snare
+  //     <img src="../Icons/snare.png" alt="Snare"
+  //          style="width: 40px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
+  // } else if (data.instrument === "High Hat") {
+  //   instrument_html.innerHTML = `High Hat
+  //     <img src="../Icons/highhat.png" alt="High Hat"
+  //          style="width: 40px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
+  // } else {
+  //   instrument_html.textContent = data.instrument;
+  // }
+
+  instrument_html.textContent = data.instrument;
 
   note_html.textContent = "Note: " + data.note;
   bpm_html.textContent = "BPM: " + data.bpm;

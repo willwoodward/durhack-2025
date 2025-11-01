@@ -11,7 +11,7 @@ import json
 SAVE_DIR = "frames"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-INSTRUMENT = ["Piano","Kickdrum", "Snare", "High Hat"]##,"Kickdrum", "Snare", "High Hat"
+INSTRUMENT = ["Piano","Kick Drum", "Snare", "High Hat"]##,"Kickdrum", "Snare", "High Hat"
 BPM = ["100", "150", "200"]
 NOTE = ["A", "B", "C", "D","E","F","G"]
 
@@ -24,7 +24,7 @@ async def handle_connection(websocket):
                 instrument_type = random.choice(INSTRUMENT)
                 BPM_type = random.choice(BPM)
                 note_type = random.choice(NOTE)
-                data = {"instrument": "High Hat", "bpm": BPM_type, "note":note_type}
+                data = {"instrument": instrument_type, "bpm": BPM_type, "note":note_type}
                 await websocket.send(json.dumps(data))  # prefix messages
                 await asyncio.sleep(2)
         except websockets.exceptions.ConnectionClosed:
