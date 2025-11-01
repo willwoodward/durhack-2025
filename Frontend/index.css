@@ -1,3 +1,14 @@
+/* Reset sensible defaults so fixed/full-width elements don't overflow */
+html, body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
 #live-stream {
   position: fixed;
   top: 0;
@@ -14,13 +25,12 @@
   left: 0;
   width: 100%;        /* full width */
   height: 50px;       /* adjust thickness */
-  background-color: white;  /* white color */
   z-index: 1000;      /* appear above other elements */
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* optional subtle shadow */
   display: flex;
-  justify-content: space-between; /* spreads items across the bar */
+  justify-content: flex-end; /* align items to the right */
   align-items: center;             /* vertically center text */
-  padding: 0 0px;                 /* space from left/right edges */
+  /* add a little top padding so bubbles sit slightly lower on the screen */
+  padding: 8px 16px 0;                 /* top right bottom */
 }
 
 
@@ -36,24 +46,36 @@
   display: none;
 }
 
-#instrument,
-#note,
-#bpm {
+
+/* Style each immediate child of the top bar as a pill/bubble */
+#top-bar > * {
+  box-sizing: border-box;
   font-family: Arial, sans-serif;
-  font-size: 40px;
-  font-weight: bold;
-  color: rgb(255, 0, 0); /* optional */
+  font-size: 24px;               /* 50% larger than 16px */
+  font-weight: 600;
+  color: #0a0a0a;
+  display: inline-flex;          /* allow centering of inner content */
+  align-items: center;
+  justify-content: center;
+  /* use symmetric vertical padding so text is centered inside the pill */
+  padding: 9px 21px;            /* vertical right/left */
+  line-height: 1;               /* ensure line-height doesn't push text off-center */
+  background-color: #f2f2f2;    /* light grey bubble */
+  border-radius: 999px;         /* pill shape */
+  text-decoration: none;
+  height: auto;                 /* allow content to set the height */
+  max-height: calc(100% - 6px);/* allow slightly taller bubbles while staying inside the bar */
+  /* prevent flex items from growing/shrinking unexpectedly */
+  flex: 0 0 auto;
+  margin: 0;                    /* spacing is handled by flex space-between */
+  /* subtle shadow to lift bubbles off the background */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  transition: box-shadow 150ms ease, transform 150ms ease;
 }
 
-#note {
-  text-align: center;
-  flex: 1; /* lets note stay centered even if others resize */
+/* Optional: visual gap between items without affecting space-between */
+/* gap between right-aligned bubbles */
+#top-bar {
+  column-gap: 10px;
 }
 
-#instrument{
-  padding-left: 1%;
-}
-
-#bpm{
-  padding-right: 1%;
-}

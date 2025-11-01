@@ -4,6 +4,7 @@ const ctx = canvas.getContext("2d");
 const instrument_html = document.getElementById("instrument");
 const note_html = document.getElementById("note");
 const bpm_html = document.getElementById("bpm");
+const video_container = document.getElementById("video-container");
 
 // Connect to WebSocket server
 const ws = new WebSocket("ws://localhost:3000");
@@ -18,7 +19,6 @@ ws.onerror = (err) => {
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-
   if (data.instrument === "Piano") {
     instrument_html.innerHTML = `Piano 
       <img src="../Icons/piano.png" alt="Piano" 
@@ -31,11 +31,11 @@ ws.onmessage = (event) => {
     instrument_html.innerHTML = `Snare 
       <img src="../Icons/snare.png" alt="Snare" 
            style="width: 40px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
-  } else if (data.instrument === "High Hat"){
+  } else if (data.instrument === "High Hat") {
     instrument_html.innerHTML = `High Hat 
       <img src="../Icons/highhat.png" alt="High Hat" 
            style="width: 40px; height: 40px; vertical-align: middle; margin-left: 0px;">`;
-  }else{
+  } else {
     instrument_html.textContent = data.instrument;
   }
 
@@ -101,7 +101,7 @@ for (let i = 0; i < numLines; i++) {
   const line = document.createElement("div");
   line.className = "overlay-line";
   line.style.top = `${((i + 1) / (numLines + 1)) * 100}vh`;
-  document.body.appendChild(line);
+  video_container.appendChild(line);
   overlayLines.push(line);
 }
 
