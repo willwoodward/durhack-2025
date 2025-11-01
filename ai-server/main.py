@@ -15,7 +15,7 @@ import websockets
 import json
 import threading
 
-from src.detectors import DetectionEvent, EventDetector, ClapDetector, StompDetector, SwipeDetector, WristFlickDetector, HandSectionDetector
+from src.detectors import DetectionEvent, EventDetector, ClapDetector, StompDetector, SwipeDetector, WristFlickDetector, HandSectionDetector, QuadSectionDetector
 
 
 class PoseEstimator:
@@ -44,7 +44,10 @@ class PoseEstimator:
             WristFlickDetector("right"),
             HandSectionDetector("left", num_sections=8, stability_time=0.2),
             HandSectionDetector("right", num_sections=8, stability_time=0.2),
-            SwipeDetector("left", "left_to_right")
+            QuadSectionDetector("left", num_sections=2, stability_time=0.1),
+            QuadSectionDetector("right", num_sections=2, stability_time=0.1),
+            SwipeDetector("left", "left_to_right"),
+            SwipeDetector("right", "right_to_left")
         ]
 
         self.event_history: List[DetectionEvent] = []
@@ -131,11 +134,6 @@ class PoseEstimator:
                 if event:
                     detected_events.append(event)
                     self.event_history.append(event)
-                    # Show relative time in console for readability
-                    relative_time = event.timestamp - self.start_unix_time if self.start_unix_time else event.timestamp
-                    print(f"[{event.name.upper()}] Detected at {relative_time:.2f}s "
-                          f"(confidence: {event.confidence:.2f}) "
-                          f"[Unix: onset={event.onset_time:.2f}, offset={event.offset_time:.2f}]")
 
                     # Call event callback if provided
                     if self.event_callback:
@@ -498,15 +496,20 @@ async def websocket_handler(websocket):
 
                         # Send events back to frontend
                         for event in events:
-                            if event.name in ["clap", "stomp"]:
+                            # Allow specific events or any section/quad detector events
+                            allowed_events = ["clap", "stomp", "left_hand_upper", "right_hand_upper"]
+                            is_section_event = "section" in event.name or "quad" in event.name
+
+                            if event.name in allowed_events or is_section_event:
                                 # Send in format frontend expects
                                 event_payload = {
-                                    "instrument": "Drums" if event.name == "stomp" else "Clap",
+                                    "instrument": "Drums",
                                     "note": event.name.upper(),
-                                    "bpm": 120,  # TODO: Calculate actual BPM from event timing
+                                    "bpm": 120,
                                     "event_name": event.name,
                                     "onset_time": event.onset_time,
-                                    "offset_time": event.offset_time
+                                    "offset_time": event.offset_time,
+                                    "metadata": event.metadata
                                 }
                                 await websocket.send(json.dumps(event_payload))
                                 print(f"[WEBSOCKET] Sent {event.name} to frontend: onset={event.onset_time:.2f}, offset={event.offset_time:.2f}")
