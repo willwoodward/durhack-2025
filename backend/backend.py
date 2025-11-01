@@ -11,18 +11,20 @@ import json
 SAVE_DIR = "frames"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-INSTRUMENT = ["kickdrum", "snare", "high_hat", "piano"]
+INSTRUMENT = ["Piano"]##,"Kickdrum", "Snare", "High Hat", 
 BPM = ["100", "150", "200"]
+NOTE = ["A", "B", "C", "D","E","F","G"]
 
 async def handle_connection(websocket):
     print("Client connected")
     
-    async def send_drum_types():
+    async def send_data():
         try:
             while True:
                 instrument_type = random.choice(INSTRUMENT)
                 BPM_type = random.choice(BPM)
-                data = {"instrument": instrument_type, "bpm": BPM_type}
+                note_type = random.choice(NOTE)
+                data = {"instrument": instrument_type, "bpm": BPM_type, "note":note_type}
                 await websocket.send(json.dumps(data))  # prefix messages
                 await asyncio.sleep(2)
         except websockets.exceptions.ConnectionClosed:
@@ -43,7 +45,7 @@ async def handle_connection(websocket):
             print("Client disconnected from frame receiver")
 
     # Run both tasks concurrently
-    await asyncio.gather(send_drum_types()) ##, receive_frames()
+    await asyncio.gather(send_data()) ##, receive_frames()
 
 async def main():
     server = await websockets.serve(handle_connection, "localhost", 3000)

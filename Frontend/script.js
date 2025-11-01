@@ -1,6 +1,9 @@
 const video = document.getElementById("live-stream");
 const canvas = document.createElement("canvas");
 const ctx = canvas.getContext("2d");
+const instrument_html = document.getElementById("instrument");
+const note_html = document.getElementById("note");
+const bpm_html = document.getElementById("bpm");
 
 // Connect to WebSocket server
 const ws = new WebSocket("ws://localhost:3000");
@@ -15,16 +18,14 @@ ws.onerror = (err) => {
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-  if (data.instrument == "piano") {
+  instrument_html.textContent = "Instrument: " + data.instrument;
+  note_html.textContent = "Note: " + data.note;
+  bpm_html.textContent = "BPM: " + data.bpm;
+  if (data.instrument == "Piano") {
     toggleNoteOverlay(true);
-  }else{
+  } else {
     toggleNoteOverlay(false);
   }
-
-  console.log(data);
-  console.log(data.instrument);
-  console.log(data.bpm);
-
 };
 
 ws.onclose = () => {
@@ -78,23 +79,21 @@ const numLines = 7;
 const overlayLines = [];
 for (let i = 0; i < numLines; i++) {
   const line = document.createElement("div");
-    line.className = "overlay-line";
-    line.style.top = `${( (i+1) / (numLines + 1)) * 100}vh`;
-    document.body.appendChild(line);
-    overlayLines.push(line);
+  line.className = "overlay-line";
+  line.style.top = `${((i + 1) / (numLines + 1)) * 100}vh`;
+  document.body.appendChild(line);
+  overlayLines.push(line);
 }
 
-// Function to toggle overlay 
-function toggleNoteOverlay(show){
+// Function to toggle overlay
+function toggleNoteOverlay(show) {
   // show is expected to be a boolean; set display accordingly
-  overlayLines.forEach(line => {
-    line.style.display = show ? 'block' : 'none';
+  overlayLines.forEach((line) => {
+    line.style.display = show ? "block" : "none";
   });
 }
 
 let note_overlay = true;
-
-
 
 // show after 3 seconds (demo)
 // setTimeout(() => toggleNoteOverlay(false), 1000);

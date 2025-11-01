@@ -8,6 +8,22 @@
   z-index: -1;
 }
 
+#top-bar {
+  position: fixed;    /* stay at the top */
+  top: 0;             /* align to top */
+  left: 0;
+  width: 100%;        /* full width */
+  height: 50px;       /* adjust thickness */
+  background-color: white;  /* white color */
+  z-index: 1000;      /* appear above other elements */
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* optional subtle shadow */
+  display: flex;
+  justify-content: space-between; /* spreads items across the bar */
+  align-items: center;             /* vertically center text */
+  padding: 0 0px;                 /* space from left/right edges */
+}
+
+
 .overlay-line {
   position: fixed;
   left: 0;
@@ -17,4 +33,26 @@
   pointer-events: none;
   z-index: 1;
   display: none;
+}
+
+#instrument,
+#note,
+#bpm {
+  font-family: Arial, sans-serif;
+  font-size: 40px;
+  font-weight: bold;
+  color: rgb(255, 0, 0); /* optional */
+}
+
+#note {
+  text-align: center;
+  flex: 1; /* lets note stay centered even if others resize */
+}
+
+#instrument{
+  padding-left: 1%;
+}
+
+#bpm{
+  padding-right: 1%;
 }
