@@ -17,9 +17,13 @@ ws.onerror = (err) => {
   console.error("WebSocket error:", err);
 };
 
+const collider = new ClapCollider();
+collider.start();
+
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-
+  collider.handleEvent(data.event_name, data.onset_time, data.offset_time)
+  
   // Log clap events
   if (data.event_name === "clap") {
     console.log("🎵 CLAP detected!", {

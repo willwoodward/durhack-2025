@@ -25,5 +25,8 @@ SWIPE_MIN_DISTANCE = 0.15           # Min total distance traveled to confirm swi
 SWIPE_STABILITY_FRAMES = 3          # Consecutive frames moving in correct direction
 SWIPE_COOLDOWN = 0.5                # Seconds between swipe detections
 
+# Chop Detection (vertical hand motion)
+CHOP_COOLDOWN = 0.5
+
 # Visibility Thresholds                # Min landmark visibility to detect events (0-1)
 MIN_VISIBILITY = 0.5
