@@ -90,11 +90,11 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             }
           },
           "image/jpeg",
-          0.7
+          1
         );
 
         // Schedule next frame (~10 fps)
-        setTimeout(sendFrames, 33);
+        setTimeout(sendFrames, 30);
       }
     })
     .catch((error) => {

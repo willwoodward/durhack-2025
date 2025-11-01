@@ -5,7 +5,7 @@
 CLAP_DISTANCE_THRESHOLD = 0.5      # Max distance between hands to detect clap (lower = stricter)
 CLAP_DISTANCE_APART = 0.5          # Min distance to consider hands "apart" before clapping
 CLAP_STABILITY_FRAMES = 3           # Consecutive frames needed to confirm clap
-CLAP_COOLDOWN = 0.5                 # Seconds between clap detections
+CLAP_COOLDOWN = 0.1                 # Seconds between clap detections
 
 # Stomp Detection
 STOMP_VELOCITY_THRESHOLD = 0.5      # Min downward velocity to detect stomp (higher = stricter)
