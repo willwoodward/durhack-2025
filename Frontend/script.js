@@ -40,6 +40,17 @@ ws.onmessage = (event) => {
     topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
   }
 
+  if (data.event_name === "clap") {
+    const pulseDiv = document.createElement("div");
+    pulseDiv.classList.add("pulse");
+    document.body.appendChild(pulseDiv);
+
+    // Remove the element after animation completes
+    setTimeout(() => {
+      pulseDiv.remove();
+    }, 600); // match the animation duration
+  }
+
   // Log all events
   console.log(`🎵 ${data.event_name.toUpperCase()} detected!`, {
     event: data.event_name,
