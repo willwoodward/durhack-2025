@@ -12,6 +12,10 @@ from typing import List, Optional, Tuple
 from dataclasses import dataclass
 import time
 import sys
+import asyncio
+import websockets
+import json
+import threading
 
 
 # ==================== CONFIGURATION ====================
@@ -35,6 +39,11 @@ FLICK_MIN_HAND_DISTANCE = 0.4       # Min distance between hands to avoid trigge
 FLICK_STABILITY_FRAMES = 1          # Number of consecutive frames motion must meet thresholds
 FLICK_COOLDOWN = 0.15               # Minimum seconds between flick detections
 
+# Swipe Detection (horizontal hand motion)
+SWIPE_VELOCITY_THRESHOLD = 0.3      # Min horizontal velocity to detect swipe
+SWIPE_MIN_DISTANCE = 0.15           # Min total distance traveled to confirm swipe
+SWIPE_STABILITY_FRAMES = 3          # Consecutive frames moving in correct direction
+SWIPE_COOLDOWN = 0.5                # Seconds between swipe detections
 
 # Visibility Thresholds
 MIN_VISIBILITY = 0.5                # Min landmark visibility to detect events (0-1)
@@ -48,6 +57,8 @@ class DetectionEvent:
     name: str
     timestamp: float
     confidence: float
+    onset_time: float  # When the gesture started
+    offset_time: float  # When the gesture was confirmed/completed
     metadata: dict = None
 
 
@@ -165,6 +176,9 @@ class ClapDetector(EventDetector):
         self.current_state = "unknown"  # "close", "apart", "medium", or "low_visibility"
         self.just_detected = False  # Flag to show green flash on detection
 
+        # Onset/offset tracking
+        self.onset_time = None  # When hands first got close
+
     def _get_hand_landmarks(self, landmarks):
         """Extract left and right wrist landmarks."""
         left_wrist = landmarks[mp.solutions.pose.PoseLandmark.LEFT_WRIST.value]
@@ -179,7 +193,7 @@ class ClapDetector(EventDetector):
         """Check if hands are close enough to potentially be clapping."""
         return distance < self.distance_threshold
 
-    def _update_hand_state(self, distance: float) -> None:
+    def _update_hand_state(self, distance: float, frame_time: float) -> None:
         """
         Update frame counters and state based on current hand distance.
 
@@ -187,6 +201,9 @@ class ClapDetector(EventDetector):
         which is essential for detecting a deliberate clap vs. random movement.
         """
         if self._are_hands_close(distance):
+            # Track onset time when hands first get close
+            if self.close_frame_count == 0:
+                self.onset_time = frame_time
             self.close_frame_count += 1
             self.apart_frame_count = 0
             self.current_state = "close"
@@ -194,6 +211,7 @@ class ClapDetector(EventDetector):
             self.apart_frame_count += 1
             self.close_frame_count = 0
             self.current_state = "apart"
+            self.onset_time = None  # Reset onset time when hands move apart
         else:
             # In-between state, don't reset counters completely
             self.current_state = "medium"
@@ -208,6 +226,7 @@ class ClapDetector(EventDetector):
         self.apart_frame_count = 0
         self.current_state = state
         self.just_detected = False
+        self.onset_time = None
 
     def detect(self, landmarks, frame_time: float) -> Optional[DetectionEvent]:
         if not self.can_detect(frame_time):
@@ -228,10 +247,12 @@ class ClapDetector(EventDetector):
         self.current_distance = distance
 
         # Update frame counters and state
-        self._update_hand_state(distance)
+        self._update_hand_state(distance, frame_time)
 
         # Detect clap: hands close for multiple frames AND were previously apart
         if self.close_frame_count >= self.stability_frames and self.was_apart:
+            onset = self.onset_time if self.onset_time is not None else frame_time
+            offset = frame_time
             self.was_apart = False
             self.close_frame_count = 0
             self.apart_frame_count = 0
@@ -241,6 +262,8 @@ class ClapDetector(EventDetector):
                 name=self.name,
                 timestamp=frame_time,
                 confidence=1.0 - (distance / self.distance_threshold),
+                onset_time=onset,
+                offset_time=offset,
                 metadata={"distance": distance}
             )
         else:
@@ -259,6 +282,7 @@ class StompDetector(EventDetector):
         self.prev_time = None
         self.stability_frames = STOMP_STABILITY_FRAMES
         self.high_velocity_count = 0
+        self.onset_time = None  # When high velocity first detected
 
     def detect(self, landmarks, frame_time: float) -> Optional[DetectionEvent]:
         # Get foot landmarks
@@ -299,20 +323,29 @@ class StompDetector(EventDetector):
 
         # Track stability
         if detected_foot and max_velocity > self.velocity_threshold:
+            # Track onset time when high velocity first detected
+            if self.high_velocity_count == 0:
+                self.onset_time = frame_time
             self.high_velocity_count += 1
         else:
             self.high_velocity_count = 0
+            self.onset_time = None
 
         # Only trigger after seeing high velocity for multiple frames
         if self.high_velocity_count >= self.stability_frames and self.can_detect(frame_time):
+            onset = self.onset_time if self.onset_time is not None else frame_time
+            offset = frame_time
             self.record_detection(frame_time)
             self.high_velocity_count = 0
+            self.onset_time = None
             self.prev_foot_positions = current_positions
             self.prev_time = frame_time
             return DetectionEvent(
                 name=self.name,
                 timestamp=frame_time,
                 confidence=min(1.0, max_velocity / (self.velocity_threshold * 2)),
+                onset_time=onset,
+                offset_time=offset,
                 metadata={"foot": detected_foot, "velocity": max_velocity}
             )
 
@@ -426,6 +459,8 @@ class WristFlickDetector(EventDetector):
                         name=self.name,
                         timestamp=frame_time,
                         confidence=min(1.0, linear_speed / (self.velocity_threshold * 2)),
+                        onset_time=frame_time,
+                        offset_time=frame_time,
                         metadata={
                             "hand": self.hand,
                             "speed": linear_speed,
@@ -492,6 +527,8 @@ class HandSectionDetector(EventDetector):
                     name=self.name,
                     timestamp=frame_time,
                     confidence=1.0,
+                    onset_time=self.section_enter_time or frame_time,
+                    offset_time=frame_time,
                     metadata={
                         "hand": self.hand,
                         "section": section_index,
@@ -501,17 +538,136 @@ class HandSectionDetector(EventDetector):
         return None
 
 
+class SwipeDetector(EventDetector):
+    """
+    Detects horizontal swipe gestures with a hand.
+    Tracks sustained movement in one direction (left-to-right or right-to-left).
+    """
+
+    def __init__(self, hand: str, direction: str):
+        """
+        :param hand: "left" or "right"
+        :param direction: "left_to_right" or "right_to_left"
+        """
+        self.hand = hand
+        self.direction = direction
+
+        name = f"{hand}_swipe_{direction}"
+        super().__init__(name, cooldown=SWIPE_COOLDOWN)
+
+        # Configuration
+        self.velocity_threshold = SWIPE_VELOCITY_THRESHOLD
+        self.min_distance = SWIPE_MIN_DISTANCE
+        self.stability_frames = SWIPE_STABILITY_FRAMES
+
+        # State tracking
+        self.prev_position = None
+        self.prev_time = None
+        self.swipe_frame_count = 0
+        self.start_position = None
+        self.total_distance = 0
+        self.onset_time = None
+
+        # Debug info
+        self.current_velocity = 0
+        self.just_detected = False
+
+        # Wrist landmark
+        if hand == "left":
+            self.wrist_id = mp.solutions.pose.PoseLandmark.LEFT_WRIST.value
+        else:
+            self.wrist_id = mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value
+
+    def detect(self, landmarks, frame_time: float) -> Optional[DetectionEvent]:
+        if not self.can_detect(frame_time) or landmarks is None:
+            self.just_detected = False
+            return None
+
+        wrist = landmarks[self.wrist_id]
+
+        # Check visibility
+        if not self.check_visibility(wrist):
+            self._reset_swipe()
+            return None
+
+        current_position = np.array([wrist.x, wrist.y, wrist.z])
+
+        if self.prev_position is not None and self.prev_time is not None:
+            dt = frame_time - self.prev_time
+            if dt > 0 and dt < 0.5:  # Ignore large time gaps
+                # Calculate horizontal velocity (x-axis)
+                displacement = current_position - self.prev_position
+                horizontal_velocity = displacement[0] / dt  # Positive = right, negative = left
+                self.current_velocity = horizontal_velocity
+
+                # Check if moving in the correct direction with enough speed
+                moving_correctly = False
+                if self.direction == "left_to_right" and horizontal_velocity > self.velocity_threshold:
+                    moving_correctly = True
+                elif self.direction == "right_to_left" and horizontal_velocity < -self.velocity_threshold:
+                    moving_correctly = True
+
+                if moving_correctly:
+                    # Start tracking if this is the first frame
+                    if self.swipe_frame_count == 0:
+                        self.start_position = self.prev_position.copy()
+                        self.total_distance = 0
+                        self.onset_time = frame_time
+
+                    self.swipe_frame_count += 1
+                    self.total_distance += abs(displacement[0])
+                else:
+                    # Reset if movement stopped or changed direction
+                    self._reset_swipe()
+
+                # Trigger detection if stable enough and traveled far enough
+                if (self.swipe_frame_count >= self.stability_frames and
+                    self.total_distance >= self.min_distance):
+                    onset = self.onset_time if self.onset_time is not None else frame_time
+                    offset = frame_time
+                    self.record_detection(frame_time)
+                    self.just_detected = True
+                    event = DetectionEvent(
+                        name=self.name,
+                        timestamp=frame_time,
+                        confidence=min(1.0, self.total_distance / (self.min_distance * 2)),
+                        onset_time=onset,
+                        offset_time=offset,
+                        metadata={
+                            "hand": self.hand,
+                            "direction": self.direction,
+                            "distance": self.total_distance,
+                            "velocity": horizontal_velocity
+                        }
+                    )
+                    self._reset_swipe()
+                    self.prev_position = current_position
+                    self.prev_time = frame_time
+                    return event
+
+        self.prev_position = current_position
+        self.prev_time = frame_time
+        return None
+
+    def _reset_swipe(self):
+        """Reset swipe tracking state."""
+        self.swipe_frame_count = 0
+        self.start_position = None
+        self.total_distance = 0
+        self.onset_time = None
+        self.just_detected = False
 
 
 class PoseEstimator:
     """Main pose estimation and event detection system."""
 
-    def __init__(self, detectors: List[EventDetector] = None):
+    def __init__(self, detectors: List[EventDetector] = None, event_callback=None):
         """
         Initialize pose estimator.
 
         Args:
             detectors: List of event detectors to use
+            event_callback: Optional callback function to call when events are detected
         """
         self.mp_pose = mp.solutions.pose
         self.mp_drawing = mp.solutions.drawing_utils
@@ -527,10 +683,13 @@ class PoseEstimator:
             WristFlickDetector("left"),
             WristFlickDetector("right"),
             HandSectionDetector("left", num_sections=8, stability_time=0.2),
-            HandSectionDetector("right", num_sections=8, stability_time=0.2)
+            HandSectionDetector("right", num_sections=8, stability_time=0.2),
+            SwipeDetector("left", "left_to_right")
         ]
 
         self.event_history: List[DetectionEvent] = []
+        self.event_callback = event_callback
+        self.start_unix_time = None  # Unix timestamp when processing starts
 
     def add_detector(self, detector: EventDetector):
         """Add a new event detector."""
@@ -542,7 +701,7 @@ class PoseEstimator:
 
         Args:
             frame: Input image frame
-            frame_time: Timestamp of the frame
+            frame_time: Unix timestamp of the frame
             debug: Show debug info on frame
 
         Returns:
@@ -638,8 +797,15 @@ class PoseEstimator:
                 if event:
                     detected_events.append(event)
                     self.event_history.append(event)
-                    print(f"[{event.name.upper()}] Detected at {event.timestamp:.2f}s "
-                          f"(confidence: {event.confidence:.2f})")
+                    # Show relative time in console for readability
+                    relative_time = event.timestamp - self.start_unix_time if self.start_unix_time else event.timestamp
+                    print(f"[{event.name.upper()}] Detected at {relative_time:.2f}s "
+                          f"(confidence: {event.confidence:.2f}) "
+                          f"[Unix: onset={event.onset_time:.2f}, offset={event.offset_time:.2f}]")
+
+                    # Call event callback if provided
+                    if self.event_callback:
+                        self.event_callback(event)
 
             # Draw pose landmarks
             self.mp_drawing.draw_landmarks(
@@ -699,6 +865,36 @@ class PoseEstimator:
                             text_y = wrist_y
                             cv2.putText(image, f"{hand_label}-FLICK!", (text_x, text_y),
                                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+                # Draw swipe detection visual cues
+                for detector in self.detectors:
+                    if isinstance(detector, SwipeDetector):
+                        if detector.hand == "left":
+                            wrist_x, wrist_y = left_x, left_y
+                        else:
+                            wrist_x, wrist_y = right_x, right_y
+
+                        # Show arrow when swipe is detected
+                        if detector.just_detected:
+                            arrow_length = 80
+                            arrow_color = (0, 255, 255)  # Yellow/cyan
+
+                            # Draw arrow in swipe direction
+                            if detector.direction == "left_to_right":
+                                start_pt = (wrist_x - arrow_length // 2, wrist_y)
+                                end_pt = (wrist_x + arrow_length // 2, wrist_y)
+                            else:  # right_to_left
+                                start_pt = (wrist_x + arrow_length // 2, wrist_y)
+                                end_pt = (wrist_x - arrow_length // 2, wrist_y)
+
+                            cv2.arrowedLine(image, start_pt, end_pt, arrow_color, 4, tipLength=0.3)
+
+                            # Label
+                            direction_label = "→" if detector.direction == "left_to_right" else "←"
+                            hand_label = "R" if detector.hand == "right" else "L"
+                            cv2.putText(image, f"{hand_label}-SWIPE {direction_label}",
+                                       (wrist_x - 60, wrist_y - 40),
+                                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, arrow_color, 2)
 
                 # Draw section detection visual cues
                 left_section_det = None
@@ -859,9 +1055,10 @@ class PoseEstimator:
         if debug:
             print("✓ Debug mode enabled")
 
-        print(f"\nProcessing frames... Press Ctrl+C to stop\n")
+        print("\nProcessing frames... Press Ctrl+C to stop\n")
 
         start_time = time.time()
+        self.start_unix_time = start_time  # Store Unix start time
         frame_count = 0
 
         is_video_file = isinstance(source, str)
@@ -877,11 +1074,13 @@ class PoseEstimator:
                         print("Warning: Failed to read frame, retrying...")
                         continue
 
-                frame_time = time.time() - start_time
+                # Use absolute Unix timestamp instead of relative time
+                current_unix_time = time.time()
+                frame_time = current_unix_time - start_time  # Relative time for FPS calculation
                 frame_count += 1
 
-                # Process frame
-                annotated_frame, events = self.process_frame(frame, frame_time, debug=debug)
+                # Process frame with absolute Unix timestamp
+                annotated_frame, events = self.process_frame(frame, current_unix_time, debug=debug)
 
                 # Write to output video if requested
                 if video_writer:
@@ -935,6 +1134,88 @@ class PoseEstimator:
                 print("\nNo events detected.")
 
 
+# ==================== WEBSOCKET SERVER ====================
+
+# Global set of connected clients
+connected_clients = set()
+
+async def websocket_handler(websocket):
+    """Handle WebSocket connections."""
+    connected_clients.add(websocket)
+    print(f"[WEBSOCKET] Client connected. Total clients: {len(connected_clients)}")
+
+    try:
+        # Keep connection alive and handle incoming messages
+        async for message in websocket:
+            # Echo back or handle commands if needed
+            print(f"[WEBSOCKET] Received: {message}")
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    finally:
+        connected_clients.remove(websocket)
+        print(f"[WEBSOCKET] Client disconnected. Total clients: {len(connected_clients)}")
+
+
+async def send_event_to_clients(event_data: dict):
+    """Send event to all connected WebSocket clients."""
+    if not connected_clients:
+        return
+
+    message = json.dumps(event_data)
+    # Send to all connected clients
+    await asyncio.gather(
+        *[client.send(message) for client in connected_clients],
+        return_exceptions=True
+    )
+
+
+def send_event_via_websocket(event: DetectionEvent):
+    """
+    Send event via WebSocket.
+    Only sends clap and stomp events.
+    """
+    # Only send clap and stomp events
+    if event.name not in ["clap", "stomp"]:
+        return
+
+    payload = {
+        "event_name": event.name,
+        "onset_time": event.onset_time,
+        "offset_time": event.offset_time
+    }
+
+    try:
+        # Schedule the coroutine in the event loop
+        asyncio.run_coroutine_threadsafe(
+            send_event_to_clients(payload),
+            websocket_loop
+        )
+        print(f"[WEBSOCKET] Sent {event.name} event: onset={payload['onset_time']:.2f}s, offset={payload['offset_time']:.2f}s")
+    except Exception as e:
+        print(f"[WEBSOCKET] Failed to send {event.name} event: {e}")
+
+
+# Global event loop for websocket server
+websocket_loop = None
+
+async def start_websocket_server(host='0.0.0.0', port=5000):
+    """Start the WebSocket server."""
+    async with websockets.serve(websocket_handler, host, port):
+        print(f"[WEBSOCKET] Server started on ws://{host}:{port}")
+        await asyncio.Future()  # Run forever
+
+
+def run_websocket_server(host='0.0.0.0', port=5000):
+    """Run WebSocket server in a separate thread."""
+    global websocket_loop
+    websocket_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(websocket_loop)
+    websocket_loop.run_until_complete(start_websocket_server(host, port))
+
+
+# ======================================================
+
+
 def main():
     """Main entry point for testing."""
     # Parse simple command-line args
@@ -942,8 +1223,9 @@ def main():
     show_window = False
     debug = False
     output_video = None
+    run_server = False  # Whether to run Flask server
 
-    if len(sys.argv) > 1 and sys.argv[1] not in ['--show', '--debug', '--output']:
+    if len(sys.argv) > 1 and sys.argv[1] not in ['--show', '--debug', '--output', '--server']:
         # First arg is either camera index or video file path
         try:
             source = int(sys.argv[1])  # Try as camera index
@@ -955,6 +1237,9 @@ def main():
 
     if '--debug' in sys.argv:
         debug = True
+
+    if '--server' in sys.argv:
+        run_server = True
 
     # Check for --output flag
     if '--output' in sys.argv:
@@ -978,13 +1263,24 @@ def main():
         print(f"  {sys.argv[0]} video.mp4                    # Use video file")
         print(f"  {sys.argv[0]} video.mp4 --debug            # Show debug info")
         print(f"  {sys.argv[0]} video.mp4 --output out.mp4   # Save output video")
-        print(f"  {sys.argv[0]} video.mp4 --debug --output   # Debug + save")
+        print(f"  {sys.argv[0]} video.mp4 --server           # Run web server and POST events")
+        print(f"  {sys.argv[0]} video.mp4 --debug --server   # Debug + server")
         print()
         print("Running with default camera 0...")
         print()
 
-    # Create pose estimator with default detectors
-    estimator = PoseEstimator()
+    # Start WebSocket server if requested
+    if run_server:
+        print("Starting WebSocket server on ws://0.0.0.0:5000")
+        server_thread = threading.Thread(target=run_websocket_server, daemon=True)
+        server_thread.start()
+        time.sleep(1)  # Give server time to start
+        print("WebSocket server started. Connect to ws://localhost:5000")
+        print("Events will be sent as JSON messages")
+
+    # Create pose estimator with event callback if server is running
+    event_callback = send_event_via_websocket if run_server else None
+    estimator = PoseEstimator(event_callback=event_callback)
 
     # Example: Add custom detectors
     # estimator.add_detector(YourCustomDetector())
