@@ -26,7 +26,10 @@ SWIPE_STABILITY_FRAMES = 3          # Consecutive frames moving in correct direc
 SWIPE_COOLDOWN = 0.5                # Seconds between swipe detections
 
 # Chop Detection (vertical hand motion)
-CHOP_COOLDOWN = 0.5
+CHOP_DISTANCE_THRESHOLD = 0.3       # Min vertical distance between wrist and elbow to detect chop
+CHOP_DISTANCE_APART = 0.5          # Min distance to consider elbow above before chopping again
+CHOP_STABILITY_FRAMES = 3           # Consective frames needed to confirm a chop
+CHOP_COOLDOWN = 0.5                 # Minimum seconds between chop detections
 
 # Visibility Thresholds                # Min landmark visibility to detect events (0-1)
 MIN_VISIBILITY = 0.5
