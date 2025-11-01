@@ -7,6 +7,7 @@ const bpm_html = document.getElementById("bpm");
 const video_container = document.getElementById("video-container");
 const topLeftBox = document.getElementById("top-left-box");
 const topRightBox = document.getElementById("top-right-box");
+const stop_button = document.getElementById("stop_button");
 
 // Connect to WebSocket server
 const ws = new WebSocket("ws://localhost:3000");
@@ -22,16 +23,18 @@ ws.onerror = (err) => {
 const collider = new ClapCollider();
 collider.start();
 
+stop_button.onclick = () => collider.stop();
+
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
 
   if (data.event_name === "left_hand_upper") {
     //Make the upper left quadrant less transparent
-    topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-    topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
-  } else if (data.event_name === "right_hand_upper") {
     topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
     topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+  } else if (data.event_name === "right_hand_upper") {
+    topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+    topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
   } else {
     topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
     topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";

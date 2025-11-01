@@ -9,21 +9,47 @@ html, body {
   box-sizing: inherit;
 }
 
-#stop{
+#stop_button{
   position: fixed;
-  top: 0%;              /* distance from top */
-  width: 5%;           /* adjust size */
+  top: 0%;             
+  width: 5%;          
   height: 5%;
-  background-color: rgb(255, 255, 255); /* semi-transparent grey/black */
-  color: rgb(0, 0, 0);           /* text color */
+  background-color: rgb(255, 255, 255); 
+  color: rgb(0, 0, 0);          
   display: flex;
   justify-content: center;
   align-items: center;
-  border-radius: 10px;     /* optional rounded corners */
+  border-radius: 10px;     
   padding: 1em;
   margin: 0.5em;
-  z-index: 900;
+  z-index: 10000;
+  cursor: pointer;
 }
+
+#stop:hover {
+  background-color: #f0f0f0;      /* slightly darker on hover */
+  box-shadow: 0 6px 8px rgba(0,0,0,0.15); /* bigger shadow */
+  transform: translateY(-2px);     /* button lifts up slightly */
+}
+
+#stop:active {
+  transform: translateY(0);       /* push back down when clicked */
+  box-shadow: 0 3px 5px rgba(0,0,0,0.1);
+}
+
+
+
+#stop:hover {
+  background-color: #f0f0f0;      /* slightly darker on hover */
+  box-shadow: 0 6px 8px rgba(0,0,0,0.15); /* bigger shadow */
+  transform: translateY(-2px);     /* button lifts up slightly */
+}
+
+#stop:active {
+  transform: translateY(0);       /* push back down when clicked */
+  box-shadow: 0 3px 5px rgba(0,0,0,0.1);
+}
+
 
 .corner-box {
   position: fixed;
