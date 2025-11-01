@@ -53,3 +53,28 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
 } else {
   console.log("getUserMedia is not supported in this browser.");
 }
+
+// add note overlay
+
+const numLines = 7;
+const overlayLines = [];
+for (let i = 0; i < numLines; i++) {
+  const line = document.createElement("div");
+    line.className = "overlay-line";
+    line.style.top = `${( (i+1) / (numLines + 1)) * 100}vh`;
+    document.body.appendChild(line);
+    overlayLines.push(line);
+}
+
+// Function to toggle overlay 
+function toggleNoteOverlay(show){
+  // show is expected to be a boolean; set display accordingly
+  overlayLines.forEach(line => {
+    line.style.display = show ? 'block' : 'none';
+  });
+}
+
+let note_overlay = true;
+toggleNoteOverlay(note_overlay);
+// show after 3 seconds (demo)
+// setTimeout(() => toggleNoteOverlay(false), 1000);
