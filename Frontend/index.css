@@ -46,30 +46,6 @@ html, body {
   display: none;
 }
 
-#instrument,
-#note,
-#bpm {
-  font-family: Arial, sans-serif;
-  font-size: 16px; /* smaller, fit inside the top bar */
-  font-weight: 600;
-  color: rgb(255, 0, 0);
-}
-
-#note {
-  text-align: center;
-  /* Don't let #note grow to fill the bar; size to content. No auto margin so it stays with other items on the right. */
-  flex: 0 1 auto;
-  margin: 0;
-}
-
-#instrument{
-  padding-left: 1%;
-}
-
-#bpm{
-  padding-right: 1%;
-}
-
 
 /* Style each immediate child of the top bar as a pill/bubble */
 #top-bar > * {
@@ -95,13 +71,6 @@ html, body {
   /* subtle shadow to lift bubbles off the background */
   box-shadow: 0 2px 6px rgba(0,0,0,0.12);
   transition: box-shadow 150ms ease, transform 150ms ease;
-}
-
-/* Slight elevation on hover/focus for affordance */
-#top-bar > *:hover,
-#top-bar > *:focus {
-  box-shadow: 0 6px 14px rgba(0,0,0,0.16);
-  transform: translateY(-1px);
 }
 
 /* Optional: visual gap between items without affecting space-between */
