@@ -13,6 +13,33 @@ ws.onerror = (err) => {
   console.error("WebSocket error:", err);
 };
 
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.drum == "kickdrum") {
+    console.log("Kick!");
+  }
+
+  console.log(data);
+  console.log(data.drum);
+  console.log(data.bpm);
+
+  // // Update the page
+  // drumElement.textContent = drumType;
+
+  // // Optional: change color or style depending on drum
+  // switch (drumType) {
+  //     case "kickdrum":
+  //         drumElement.style.color = "red";
+  //         break;
+  //     case "snare":
+  //         drumElement.style.color = "blue";
+  //         break;
+  //     case "high_hat":
+  //         drumElement.style.color = "green";
+  //         break;
+  // }
+};
+
 ws.onclose = () => {
   console.log("WebSocket closed");
 };
@@ -35,13 +62,17 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
         // Convert canvas to Blob and send over WebSocket
-        canvas.toBlob((blob) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            // Send Blob directly (browser will handle binary)
-            ws.send(blob);
-            console.log("Frame sent, size:", blob.size);
-          }
-        }, "image/jpeg", 0.7);
+        canvas.toBlob(
+          (blob) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              // Send Blob directly (browser will handle binary)
+              ws.send(blob);
+              //console.log("Frame sent, size:", blob.size);
+            }
+          },
+          "image/jpeg",
+          0.7
+        );
 
         // Schedule next frame (~10 fps)
         setTimeout(sendFrames, 100);
