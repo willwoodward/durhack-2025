@@ -24,22 +24,20 @@ class ClapCollider {
 
   processSequence(event) {
     const sequence = this.events.get(event);
-    console.log(sequence)
     this.events.delete(event);
     const clipped = [];
     const start = sequence[0][0];
     let running = 0;
     let count = 0;
-    // A bar in 4/4 120bpm
-    while (running <= 2000 && count < sequence.length) {
+    while (running <= 4000 && count < sequence.length) {
       clipped.push(sequence[count]);
       running = sequence[count][1] - start;
       count++;
     }
     const num_parts = 16;
-    const unit = running / num_parts;
+    const unit = 4 / num_parts;
     const onsets = clipped.map(
-      ([s, _]) => (Math.round((s - start) / unit) * unit) / unit
+      ([s, _]) => Math.round((s - start) / unit)
     );
     const pattern = new Array(num_parts).fill("~", 0, num_parts);
     for (let i = 0; i < num_parts; i++) {
@@ -54,7 +52,7 @@ class ClapCollider {
   mainLoop() {
     this.events.forEach((value, key) => {
       const now = new Date().getTime() / 1000;
-      if (value.length && now - value[value.length - 1][1] > 1) {
+      if (value.length && now - value[value.length - 1][1] > 2) {
         this.processSequence(key);
       }
     });
@@ -64,13 +62,17 @@ class ClapCollider {
       this.patterns.forEach((pattern, _) => {
         strings.push(`[${pattern}]`);
       });
-      cps(0.5);
+      cps(0.25);
       s(strings.join(",")).play();
     }
   }
 
   start() {
     setInterval(this.mainLoop.bind(this), 100);
+  }
+
+  stop() {
+    hush();
   }
 }
 
