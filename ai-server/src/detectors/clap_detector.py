@@ -16,6 +16,7 @@ class ClapDetector(EventDetector):
         self.stability_frames = CLAP_STABILITY_FRAMES
         self.close_frame_count = 0  # Count consecutive frames hands are close
         self.apart_frame_count = 0  # Count consecutive frames hands are apart
+        self.min_clap_visibility = 0.7  # Require both hands to be clearly visible for claps
 
         # Debug info
         self.current_distance = 0
@@ -82,8 +83,9 @@ class ClapDetector(EventDetector):
         # Get hand landmarks
         left_wrist, right_wrist = self._get_hand_landmarks(landmarks)
 
-        # Check visibility - reset counters if hands aren't visible
-        if not self.check_visibility(left_wrist, right_wrist):
+        # Check visibility - require BOTH hands to be clearly visible for claps
+        # This prevents false claps when only one hand is on screen
+        if not self.check_visibility(left_wrist, right_wrist, min_visibility=self.min_clap_visibility):
             # Reset counters when visibility drops to prevent false detections from jumping landmarks
             self._reset_state("low_visibility")
             return None

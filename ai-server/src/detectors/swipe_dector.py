@@ -26,6 +26,7 @@ class SwipeDetector(EventDetector):
         self.velocity_threshold = SWIPE_VELOCITY_THRESHOLD
         self.min_distance = SWIPE_MIN_DISTANCE
         self.stability_frames = SWIPE_STABILITY_FRAMES
+        self.max_other_hand_visibility = 0.6  # Block swipes if other hand is visible
 
         # State tracking
         self.prev_position = None
@@ -39,11 +40,13 @@ class SwipeDetector(EventDetector):
         self.current_velocity = 0
         self.just_detected = False
 
-        # Wrist landmark
+        # Wrist landmarks
         if hand == "left":
             self.wrist_id = mp.solutions.pose.PoseLandmark.LEFT_WRIST.value
+            self.other_wrist_id = mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value
         else:
             self.wrist_id = mp.solutions.pose.PoseLandmark.RIGHT_WRIST.value
+            self.other_wrist_id = mp.solutions.pose.PoseLandmark.LEFT_WRIST.value
 
     def detect(self, landmarks, frame_time: float) -> Optional[DetectionEvent]:
         if not self.can_detect(frame_time) or landmarks is None:
@@ -51,9 +54,15 @@ class SwipeDetector(EventDetector):
             return None
 
         wrist = landmarks[self.wrist_id]
+        other_wrist = landmarks[self.other_wrist_id]
 
-        # Check visibility
+        # Check visibility of swiping hand
         if not self.check_visibility(wrist):
+            self._reset_swipe()
+            return None
+
+        # Block swipes if both hands are visible (prevents swipes during claps)
+        if other_wrist.visibility >= self.max_other_hand_visibility:
             self._reset_swipe()
             return None
 

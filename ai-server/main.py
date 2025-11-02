@@ -114,9 +114,6 @@ class PoseEstimator:
         # Initialize detectors
         self.detectors = detectors or [
             ClapDetector(),
-            StompDetector(),
-            WristFlickDetector("left"),
-            WristFlickDetector("right"),
             HandSectionDetector("left", num_sections=8, stability_time=0.2),
             HandSectionDetector("right", num_sections=8, stability_time=0.2),
             QuadSectionDetector("left", num_sections=2, stability_time=0.1),
