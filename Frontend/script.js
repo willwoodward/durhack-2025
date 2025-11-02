@@ -141,6 +141,7 @@ for (let i = 0; i < numLines; i++) {
   const line = document.createElement("div");
   line.className = "overlay-line";
   line.style.top = `${((i + 1) / (numLines + 1)) * 100}vh`;
+  line.style.display = "none";  // Initially hidden (start in drum mode)
   video_container.appendChild(line);
   overlayLines.push(line);
 }

@@ -7,6 +7,7 @@ class ClapCollider {
     this.started = false;
     this.strudelReady = false;  // Track if Strudel is initialized
     this.noteMode = false;  // Track if we're in note mode (synths) vs drum mode
+    this.synthsActive = false;  // Track if synths have been triggered at least once
 
     // Chord tracking for left hand
     this.sectionToChord = [
@@ -39,11 +40,13 @@ class ClapCollider {
 
   setNoteMode(isNoteMode) {
     this.noteMode = isNoteMode;
+    console.log(`🎼 Mode: ${isNoteMode ? 'SYNTHS (hand sections)' : 'DRUMS (claps/gestures)'}`);
+    console.log(`   Both drums and synths continue playing in background`);
   }
 
   handleEvent(event, onset, offset, metadata) {
-    // Handle hand section events
-    if (metadata && metadata.section !== undefined) {
+    // Handle hand section events (only in note mode)
+    if (this.noteMode && metadata && metadata.section !== undefined) {
       const section = metadata.section;
 
       if (metadata.hand === "left") {
@@ -52,6 +55,7 @@ class ClapCollider {
         if (this.leftHandChord !== chord) {
           this.leftHandChord = chord;
           this.chordChange = true;
+          this.synthsActive = true;  // Mark synths as active
           console.log(`👋 Left Hand → Section ${section} → Chord: ${chord}`);
         }
       } else if (metadata.hand === "right") {
@@ -60,16 +64,19 @@ class ClapCollider {
         if (this.rightHandNote !== note) {
           this.rightHandNote = note;
           this.leadChange = true;
+          this.synthsActive = true;  // Mark synths as active
           console.log(`🎹 Right Hand → Section ${section} → Note: ${note}`);
         }
       }
     }
 
-    // Track events for drum patterns
-    if (this.events.has(event)) {
-      this.events.get(event).push([onset, offset]);
-    } else {
-      this.events.set(event, [[onset, offset]]);
+    // Track events for drum patterns (only in drum mode)
+    if (!this.noteMode) {
+      if (this.events.has(event)) {
+        this.events.get(event).push([onset, offset]);
+      } else {
+        this.events.set(event, [[onset, offset]]);
+      }
     }
   }
 
@@ -133,47 +140,59 @@ class ClapCollider {
       }
     });
 
-    // Play drums when patterns change (only in drum mode)
-    if (this.change && this.strudelReady && !this.noteMode) {
+    // Play everything together when anything changes
+    if ((this.change || this.chordChange || this.leadChange) && this.strudelReady) {
+      const drumChange = this.change;
+      const synthChange = this.chordChange || this.leadChange;
+
       this.change = false;
+      this.chordChange = false;
+      this.leadChange = false;
+
       try {
-        const strings = [];
-        this.patterns.forEach((pattern, _) => {
-          strings.push(`[${pattern}]`);
-        });
-        cps(0.25);
-        s(strings.join(",")).play();
-        if (!this.started) {
+        const parts = [];
+
+        // Add drums if we have patterns
+        if (this.patterns.size > 0) {
+          const strings = [];
+          this.patterns.forEach((pattern, _) => {
+            strings.push(`[${pattern}]`);
+          });
+          parts.push(s(strings.join(",")));
+        }
+
+        // Add synths (chord + lead) only if they've been triggered at least once
+        if (this.synthsActive) {
+          parts.push(
+            stack(
+              chord(this.leftHandChord)
+                .dict('ireal')
+                .voicing()
+                .sound("sawtooth")
+                .cutoff(1000)
+                .gain(0.3)
+                .room(0.5),
+              note(this.rightHandNote)
+                .sound("triangle")
+                .cutoff(2000)
+                .gain(0.5)
+                .release(0.5)
+                .room(0.3)
+            )
+          );
+        }
+
+        // Play everything together
+        if (parts.length > 0) {
+          cps(0.25);
+          stack(...parts).play();
+        }
+
+        if (!this.started && drumChange) {
           this.started = true;
         }
       } catch (e) {
-        console.error("Error playing drums:", e);
-      }
-    }
-
-    // Play chord and lead together when either changes (only in note mode)
-    if ((this.chordChange || this.leadChange) && this.strudelReady && this.noteMode) {
-      this.chordChange = false;
-      this.leadChange = false;
-      try {
-        // Stack chord (left hand) and lead (right hand) together
-        stack(
-          chord(this.leftHandChord)
-            .dict('ireal')
-            .voicing()
-            .sound("sawtooth")
-            .cutoff(1000)
-            .gain(0.3)
-            .room(0.5),
-          note(this.rightHandNote)
-            .sound("triangle")
-            .cutoff(2000)
-            .gain(0.5)
-            .release(0.5)
-            .room(0.3)
-        ).play();
-      } catch (e) {
-        console.error("Error playing synths:", e);
+        console.error("Error playing music:", e);
       }
     }
   }
@@ -190,6 +209,7 @@ class ClapCollider {
     this.change = false;
     this.chordChange = false;
     this.leadChange = false;
+    this.synthsActive = false;  // Reset synths active flag
   }
 }
 
