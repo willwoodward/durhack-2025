@@ -7,7 +7,8 @@ class ClapCollider {
     this.started = false;
     this.strudelReady = false;  // Track if Strudel is initialized
     this.noteMode = false;  // Track if we're in note mode (synths) vs drum mode
-    this.synthsActive = false;  // Track if synths have been triggered at least once
+    this.leftHandActive = false;  // Track if left hand has been detected
+    this.rightHandActive = false;  // Track if right hand has been detected
 
     // Chord tracking for left hand
     this.sectionToChord = [
@@ -55,7 +56,7 @@ class ClapCollider {
         if (this.leftHandChord !== chord) {
           this.leftHandChord = chord;
           this.chordChange = true;
-          this.synthsActive = true;  // Mark synths as active
+          this.leftHandActive = true;  // Mark left hand as active
           console.log(`👋 Left Hand → Section ${section} → Chord: ${chord}`);
         }
       } else if (metadata.hand === "right") {
@@ -64,7 +65,7 @@ class ClapCollider {
         if (this.rightHandNote !== note) {
           this.rightHandNote = note;
           this.leadChange = true;
-          this.synthsActive = true;  // Mark synths as active
+          this.rightHandActive = true;  // Mark right hand as active
           console.log(`🎹 Right Hand → Section ${section} → Note: ${note}`);
         }
       }
@@ -161,25 +162,38 @@ class ClapCollider {
           parts.push(s(strings.join(",")));
         }
 
-        // Add synths (chord + lead) only if they've been triggered at least once
-        if (this.synthsActive) {
-          parts.push(
-            stack(
-              chord(this.leftHandChord)
-                .dict('ireal')
-                .voicing()
-                .sound("sawtooth")
-                .cutoff(1000)
-                .gain(0.3)
-                .room(0.5),
-              note(this.rightHandNote)
-                .sound("triangle")
-                .cutoff(2000)
-                .gain(0.5)
-                .release(0.5)
-                .room(0.3)
-            )
+        // Add synths based on which hands have been detected
+        const synthParts = [];
+
+        if (this.leftHandActive) {
+          synthParts.push(
+            chord(this.leftHandChord)
+              .dict('ireal')
+              .voicing()
+              .sound("sawtooth")
+              .cutoff(1000)
+              .gain(0.3)
+              .room(0.5)
           );
+        }
+
+        if (this.rightHandActive) {
+          synthParts.push(
+            note(this.rightHandNote)
+              .sound("triangle")
+              .cutoff(2000)
+              .gain(0.5)
+              .release(0.5)
+              .room(0.3)
+          );
+        }
+
+        if (synthParts.length > 0) {
+          if (synthParts.length === 1) {
+            parts.push(synthParts[0]);
+          } else {
+            parts.push(stack(...synthParts));
+          }
         }
 
         // Play everything together
@@ -209,7 +223,8 @@ class ClapCollider {
     this.change = false;
     this.chordChange = false;
     this.leadChange = false;
-    this.synthsActive = false;  // Reset synths active flag
+    this.leftHandActive = false;  // Reset left hand active flag
+    this.rightHandActive = false;  // Reset right hand active flag
   }
 }
 
