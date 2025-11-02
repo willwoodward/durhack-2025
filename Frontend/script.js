@@ -80,9 +80,10 @@ ws.onmessage = (event) => {
     instrument: data.instrument,
     note: data.note,
     bpm: data.bpm,
+    metadata: data.metadata,
   });
 
-  collider.handleEvent(data.event_name, data.onset_time, data.offset_time);
+  collider.handleEvent(data.event_name, data.onset_time, data.offset_time, data.metadata);
 
   instrument_html.textContent = data.instrument;
   note_html.textContent = "Note: " + data.note;
@@ -144,12 +145,20 @@ for (let i = 0; i < numLines; i++) {
   overlayLines.push(line);
 }
 
-// Always show overlay lines
+// Track whether we're in note mode (synths) or drum mode
+let noteMode = false;
+
+// Toggle between note mode (synths) and drum mode
 function toggleNoteOverlay(show) {
+  noteMode = show;
+  collider.setNoteMode(show);
+
   overlayLines.forEach((line) => {
     line.style.display = show ? "block" : "none";
   });
   topLeftBox.style.display = show ? "none" : "block";
   topRightBox.style.display = show ? "none" : "block";
+
+  console.log(`🎼 Mode switched to: ${show ? "SYNTHS/CHORDS" : "DRUMS"}`);
 }
 //toggleNoteOverlay(true);
