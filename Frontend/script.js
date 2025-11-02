@@ -40,11 +40,11 @@ stop_button.onclick = () => collider.stop();
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
 
-  if (data.event_name === "left_hand_upper") {
+  if (data.event_name === "right_hand_upper") {
     //Make the upper left quadrant less transparent
     topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
     topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
-  } else if (data.event_name === "right_hand_upper") {
+  } else if (data.event_name === "left_hand_upper") {
     topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
     topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
   } else {
