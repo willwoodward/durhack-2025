@@ -26,6 +26,25 @@ html, body {
   cursor: pointer;
 }
 
+#effect_button{
+  position: fixed;
+  top: 5%;             
+  width: 5%;          
+  height: 5%;
+  background-color: rgb(255, 255, 255); 
+  color: rgb(0, 0, 0);          
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 10px;     
+  padding: 1em;
+  margin: 0.5em;
+  z-index: 10000;
+  cursor: pointer;
+}
+
+
+
 #stop:hover {
   background-color: #f0f0f0;      /* slightly darker on hover */
   box-shadow: 0 6px 8px rgba(0,0,0,0.15); /* bigger shadow */
@@ -48,35 +67,26 @@ html, body {
 #stop:active {
   transform: translateY(0);       /* push back down when clicked */
   box-shadow: 0 3px 5px rgba(0,0,0,0.1);
-}
-
-@keyframes pulse {
-  0% {
-    transform: scale(0);
-    opacity: 0.7;
-  }
-  50% {
-    transform: scale(1.5);
-    opacity: 0.3;
-  }
-  100% {
-    transform: scale(2);
-    opacity: 0;
-  }
 }
 
 .pulse {
   position: fixed;
   top: 50%;
   left: 50%;
-  width: 100px;
-  height: 100px;
-  background-color: rgba(255, 0, 0, 0.5); /* red pulse */
+  width: 300vmin;       /* bigger size */
+  height: 300vmin;      /* bigger size */
+  background-color: rgba(255, 255, 255, 0.5);
   border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  pointer-events: none; /* let clicks pass through */
-  animation: pulse 0.6s ease-out forwards;
-  z-index: 1000;
+  transform: translate(-50%, -50%) scale(0); /* keep both translate and scale */
+  pointer-events: none;
+  animation: pulse 1s ease-out forwards;
+  z-index: 600;
+}
+
+@keyframes pulse {
+  0%   { transform: translate(-50%, -50%) scale(0); opacity: 0.7; }
+  50%  { transform: translate(-50%, -50%) scale(1.5); opacity: 0.3; }
+  100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
 }
 
 

@@ -8,6 +8,7 @@ const video_container = document.getElementById("video-container");
 const topLeftBox = document.getElementById("top-left-box");
 const topRightBox = document.getElementById("top-right-box");
 const stop_button = document.getElementById("stop_button");
+const effect_button = document.getElementById("effect_button");
 
 // Connect to WebSocket server
 const ws = new WebSocket("ws://localhost:3000");
@@ -22,6 +23,17 @@ ws.onerror = (err) => {
 
 const collider = new ClapCollider();
 collider.start();
+
+effect_button.onclick = () => {
+  const pulseDiv = document.createElement("div");
+  pulseDiv.classList.add("pulse");
+  document.body.appendChild(pulseDiv);
+
+  // Remove the element after animation completes
+  setTimeout(() => {
+    pulseDiv.remove();
+  }, 600); // match the animation duration
+};
 
 stop_button.onclick = () => collider.stop();
 
