@@ -9,6 +9,7 @@ const topLeftBox = document.getElementById("top-left-box");
 const topRightBox = document.getElementById("top-right-box");
 const stop_button = document.getElementById("stop_button");
 const effect_button = document.getElementById("effect_button");
+const legacy_button = document.getElementById("legacy_button");
 
 // Connect to WebSocket server
 const ws = new WebSocket("ws://localhost:3000");
@@ -24,15 +25,26 @@ ws.onerror = (err) => {
 const collider = new ClapCollider();
 collider.start();
 
+legacy_button.onclick = () => {
+  const isLegacy = video_container.classList.contains("legacy");
+
+  if (isLegacy) {
+    video_container.classList.remove("legacy");
+    video_container.classList.add("normal");
+  } else {
+    video_container.classList.remove("normal");
+    video_container.classList.add("legacy");
+  }
+};
+
 effect_button.onclick = () => {
   const pulseDiv = document.createElement("div");
   pulseDiv.classList.add("pulse");
   document.body.appendChild(pulseDiv);
 
-  // Remove the element after animation completes
   setTimeout(() => {
     pulseDiv.remove();
-  }, 600); // match the animation duration
+  }, 600);
 };
 
 stop_button.onclick = () => collider.stop();
@@ -41,7 +53,6 @@ ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
 
   if (data.event_name === "right_hand_upper") {
-    //Make the upper left quadrant less transparent
     topLeftBox.style.backgroundColor = "rgba(0, 0, 0, 0.1)";
     topRightBox.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
   } else if (data.event_name === "left_hand_upper") {
@@ -57,13 +68,11 @@ ws.onmessage = (event) => {
     pulseDiv.classList.add("pulse");
     document.body.appendChild(pulseDiv);
 
-    // Remove the element after animation completes
     setTimeout(() => {
       pulseDiv.remove();
-    }, 600); // match the animation duration
+    }, 600);
   }
 
-  // Log all events
   console.log(`🎵 ${data.event_name.toUpperCase()} detected!`, {
     event: data.event_name,
     onset_time: new Date(data.onset_time * 1000).toISOString(),
@@ -78,11 +87,6 @@ ws.onmessage = (event) => {
   instrument_html.textContent = data.instrument;
   note_html.textContent = "Note: " + data.note;
   bpm_html.textContent = "BPM: " + data.bpm;
-  if (data.instrument == "Piano") {
-    toggleNoteOverlay(true);
-  } else {
-    toggleNoteOverlay(false);
-  }
 };
 
 ws.onclose = () => {
@@ -95,7 +99,6 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
     .then((stream) => {
       video.srcObject = stream;
 
-      // Start sending frames after video metadata is loaded
       video.addEventListener("loadedmetadata", () => {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -103,23 +106,18 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       });
 
       function sendFrames() {
-        // Draw current frame to canvas
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        // Convert canvas to Blob and send over WebSocket
         canvas.toBlob(
           (blob) => {
             if (ws.readyState === WebSocket.OPEN) {
-              // Send Blob directly (browser will handle binary)
               ws.send(blob);
-              //console.log("Frame sent, size:", blob.size);
             }
           },
           "image/jpeg",
           1
         );
 
-        // Schedule next frame (~10 fps)
         setTimeout(sendFrames, 30);
       }
     })
@@ -130,8 +128,7 @@ if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
   console.log("getUserMedia is not supported in this browser.");
 }
 
-// add note overlay
-
+// Add note overlay lines
 const numLines = 7;
 const overlayLines = [];
 for (let i = 0; i < numLines; i++) {
@@ -142,15 +139,10 @@ for (let i = 0; i < numLines; i++) {
   overlayLines.push(line);
 }
 
-// Function to toggle overlay
+// Always show overlay lines
 function toggleNoteOverlay(show) {
-  // show is expected to be a boolean; set display accordingly
   overlayLines.forEach((line) => {
     line.style.display = show ? "block" : "none";
   });
 }
-
-let note_overlay = true;
-
-// show after 3 seconds (demo)
-// setTimeout(() => toggleNoteOverlay(false), 1000);
+toggleNoteOverlay(true);

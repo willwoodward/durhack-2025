@@ -15,11 +15,13 @@
     </div>
     <button id="stop_button">STOP</button>
     <button id="effect_button">Effect</button>
-    <div class="corner-box top-left" , id="top-left-box"></div>
-    <div class="corner-box top-right" , id="top-right-box"></div>
+    <button id="legacy_button">Legacy</button>
 
-    <div id="video-container">
+    <div id="video-container" class="normal">
+      <img src="computer_monitor.png" id="frame-image" />
       <video id="live-stream" autoplay></video>
+      <div class="corner-box top-left" id="top-left-box"></div>
+    <div class="corner-box top-right" id="top-right-box"></div>
     </div>
 
     <script src="https://unpkg.com/@strudel/web@1.0.3"></script>
