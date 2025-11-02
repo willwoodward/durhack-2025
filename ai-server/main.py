@@ -7,15 +7,90 @@ Detects events like hand clapping, foot stomping, and wrist flicks.
 import cv2
 import mediapipe as mp
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import time
 import sys
 import asyncio
 import websockets
 import json
 import threading
+from collections import deque
 
 from src.detectors import DetectionEvent, EventDetector, ClapDetector, StompDetector, SwipeDetector, WristFlickDetector, HandSectionDetector, QuadSectionDetector
+
+
+class GestureResolver:
+    """
+    Resolves gesture conflicts by delaying swipe events to check for claps.
+    When you clap, hands move horizontally which can trigger swipe detection.
+    This class suppresses swipes if a clap happens around the same time.
+    """
+
+    def __init__(self, swipe_delay: float = 0.25):
+        """
+        :param swipe_delay: Seconds to hold swipe events before sending
+        """
+        self.swipe_delay = swipe_delay
+        self.pending_swipes = deque()  # (event, release_time)
+        self.recent_claps = deque()  # (clap_time, max_age)
+
+    def add_event(self, event: DetectionEvent) -> Optional[DetectionEvent]:
+        """
+        Add an event and decide if it should be sent immediately or held.
+        Returns the event if it should be sent now, None if held.
+        """
+        current_time = time.time()
+
+        # Clean up old claps (older than 0.3s)
+        while self.recent_claps and current_time - self.recent_claps[0] > 0.3:
+            self.recent_claps.popleft()
+
+        # If it's a clap, record it and send immediately
+        if event.name == "clap":
+            self.recent_claps.append(current_time)
+            return event
+
+        # If it's a swipe, hold it briefly to see if a clap comes
+        if "swipe" in event.name:
+            release_time = current_time + self.swipe_delay
+            self.pending_swipes.append((event, release_time))
+            return None
+
+        # All other events send immediately
+        return event
+
+    def get_ready_events(self) -> List[DetectionEvent]:
+        """
+        Get any pending swipe events that are ready to send.
+        Suppresses swipes if a clap happened recently.
+        """
+        current_time = time.time()
+        ready_events = []
+
+        while self.pending_swipes:
+            event, release_time = self.pending_swipes[0]
+
+            # Not ready yet
+            if current_time < release_time:
+                break
+
+            # Remove from pending
+            self.pending_swipes.popleft()
+
+            # Check if a clap happened around the same time
+            clap_detected = False
+            for clap_time in self.recent_claps:
+                # If clap happened within ±0.2s of swipe, suppress the swipe
+                if abs(event.onset_time - clap_time) < 0.2:
+                    clap_detected = True
+                    break
+
+            if not clap_detected:
+                ready_events.append(event)
+            else:
+                print(f"[RESOLVER] Suppressed {event.name} due to clap at {event.onset_time:.2f}")
+
+        return ready_events
 
 
 class PoseEstimator:
@@ -476,9 +551,24 @@ async def websocket_handler(websocket):
     connected_clients.add(websocket)
     print(f"[WEBSOCKET] Frontend connected from {websocket.remote_address}. Total clients: {len(connected_clients)}")
 
-    # Create a pose estimator instance for this client
+    # Create a pose estimator and gesture resolver for this client
     estimator = PoseEstimator()
     estimator.start_unix_time = time.time()
+    resolver = GestureResolver(swipe_delay=0.15)  # Hold swipes for 150ms
+
+    async def send_event(event: DetectionEvent):
+        """Helper to send an event to frontend"""
+        event_payload = {
+            "instrument": "Drums",
+            "note": event.name.upper(),
+            "bpm": 120,
+            "event_name": event.name,
+            "onset_time": event.onset_time,
+            "offset_time": event.offset_time,
+            "metadata": event.metadata
+        }
+        await websocket.send(json.dumps(event_payload))
+        print(f"[WEBSOCKET] Sent {event.name} to frontend: onset={event.onset_time:.2f}, offset={event.offset_time:.2f}")
 
     try:
         async for message in websocket:
@@ -494,25 +584,23 @@ async def websocket_handler(websocket):
                         current_unix_time = time.time()
                         _, events = estimator.process_frame(frame, current_unix_time, debug=False)
 
-                        # Send events back to frontend
+                        # Process events through resolver
                         for event in events:
-                            # Allow specific events or any section/quad detector events
-                            allowed_events = ["clap", "stomp", "left_hand_upper", "right_hand_upper"]
+                            # Filter allowed events
+                            allowed_events = ["clap", "stomp", "left_hand_upper", "right_hand_upper", "right_swipe_right_to_left", "left_swipe_left_to_right"]
                             is_section_event = "section" in event.name or "quad" in event.name
 
                             if event.name in allowed_events or is_section_event:
-                                # Send in format frontend expects
-                                event_payload = {
-                                    "instrument": "Drums",
-                                    "note": event.name.upper(),
-                                    "bpm": 120,
-                                    "event_name": event.name,
-                                    "onset_time": event.onset_time,
-                                    "offset_time": event.offset_time,
-                                    "metadata": event.metadata
-                                }
-                                await websocket.send(json.dumps(event_payload))
-                                print(f"[WEBSOCKET] Sent {event.name} to frontend: onset={event.onset_time:.2f}, offset={event.offset_time:.2f}")
+                                # Pass through gesture resolver
+                                immediate_event = resolver.add_event(event)
+                                if immediate_event:
+                                    await send_event(immediate_event)
+
+                        # Check for any swipes that are ready to send
+                        ready_events = resolver.get_ready_events()
+                        for ready_event in ready_events:
+                            await send_event(ready_event)
+
                     else:
                         print("[WEBSOCKET] Failed to decode frame")
                 else:
