@@ -158,3 +158,20 @@ html, body {
   z-index: 950;
   display: block;
 }
+#loop-progress {
+  position: fixed;
+  z-index: 2000;
+  opacity: 0.5;
+  background-color: grey;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  height: 100px;
+}
+
+#loop-inner {
+  height: 100%;
+  background-color: black;
+  opacity: 0.5;
+  width: 0%;
+}

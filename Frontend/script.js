@@ -87,6 +87,11 @@ ws.onmessage = (event) => {
   instrument_html.textContent = data.instrument;
   note_html.textContent = "Note: " + data.note;
   bpm_html.textContent = "BPM: " + data.bpm;
+  if (data.event_name == "right_swipe_right_to_left") {
+    toggleNoteOverlay(true);
+  } else if (data.event_name == "left_swipe_left_to_right") {
+    toggleNoteOverlay(false);
+  }
 };
 
 ws.onclose = () => {
@@ -144,5 +149,7 @@ function toggleNoteOverlay(show) {
   overlayLines.forEach((line) => {
     line.style.display = show ? "block" : "none";
   });
+  topLeftBox.style.display = show ? "none" : "block";
+  topRightBox.style.display = show ? "none" : "block";
 }
 toggleNoteOverlay(true);
