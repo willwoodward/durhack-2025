@@ -171,7 +171,6 @@ body {
   padding: 0.5em 1em;
   pointer-events: none;
   z-index: 950;
-  transition: all 0.3s ease;
   display: block;
 }
 
@@ -196,7 +195,25 @@ body {
   pointer-events: none;
   z-index: 950;
   display: block;
+  transition: all 0.8s ease;
 }
+
+#video-container.legacy .overlay-line {
+  position: absolute;
+  left: 25.5%;
+  top: 11.5%;
+  width: 49%;
+  height: 2px; /* keep thin horizontal line */
+  background-color: red;
+  opacity: 0.7;
+  pointer-events: none;
+  z-index: 950;
+}
+
+#video-container.legacy .overlay-line:nth-child(n) {
+  top: calc(11.5% + ((69% - 2px) * (var(--line-index, 0)) / 8));
+}
+
 #loop-progress {
   position: fixed;
   z-index: 2000;

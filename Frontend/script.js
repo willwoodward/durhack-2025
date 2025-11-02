@@ -83,7 +83,12 @@ ws.onmessage = (event) => {
     metadata: data.metadata,
   });
 
-  collider.handleEvent(data.event_name, data.onset_time, data.offset_time, data.metadata);
+  collider.handleEvent(
+    data.event_name,
+    data.onset_time,
+    data.offset_time,
+    data.metadata
+  );
 
   instrument_html.textContent = data.instrument;
   note_html.textContent = "Note: " + data.note;
@@ -141,7 +146,7 @@ for (let i = 0; i < numLines; i++) {
   const line = document.createElement("div");
   line.className = "overlay-line";
   line.style.top = `${((i + 1) / (numLines + 1)) * 100}vh`;
-  line.style.display = "none";  // Initially hidden (start in drum mode)
+  line.style.display = "none"; // Initially hidden (start in drum mode)
   video_container.appendChild(line);
   overlayLines.push(line);
 }
@@ -162,4 +167,4 @@ function toggleNoteOverlay(show) {
 
   console.log(`🎼 Mode switched to: ${show ? "SYNTHS/CHORDS" : "DRUMS"}`);
 }
-//toggleNoteOverlay(true);
+toggleNoteOverlay(true);
