@@ -1,15 +1,20 @@
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: inherit;
 }
 
 /* Buttons */
-#stop_button, #effect_button, #legacy_button {
+#stop_button,
+#effect_button,
+#legacy_button {
   position: fixed;
   width: 5%;
   height: 5%;
@@ -25,9 +30,15 @@ html, body {
   cursor: pointer;
 }
 
-#stop_button { top: 0%; }
-#effect_button { top: 5%; }
-#legacy_button { top: 10%; }
+#stop_button {
+  top: 0%;
+}
+#effect_button {
+  top: 5%;
+}
+#legacy_button {
+  top: 10%;
+}
 
 /* Pulse effect */
 .pulse {
@@ -45,9 +56,18 @@ html, body {
 }
 
 @keyframes pulse {
-  0%   { transform: translate(-50%, -50%) scale(0); opacity: 0.7; }
-  50%  { transform: translate(-50%, -50%) scale(1.5); opacity: 0.3; }
-  100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0.3;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
 }
 
 /* Video container */
@@ -64,7 +84,8 @@ html, body {
   transition: all 0.8s ease-in-out;
 }
 
-#live-stream, #frame-image {
+#live-stream,
+#frame-image {
   position: absolute;
   transition: all 0.8s ease-in-out;
 }
@@ -117,12 +138,30 @@ html, body {
   transition: all 0.8s ease-in-out;
 }
 
-#video-container.normal .corner-box { width: 49.5vw; height: 50vh; }
-#video-container.normal .top-left { top: 0; left: 0; }
-#video-container.normal .top-right { top: 0; right: 0; }
-#video-container.legacy .corner-box { width: 23.75%; height: 34%; }
-#video-container.legacy .top-left { top: 11.5%; left: 26%; }
-#video-container.legacy .top-right { top: 11.5%; right: 26%; }
+#video-container.normal .corner-box {
+  width: 49.5vw;
+  height: 50vh;
+}
+#video-container.normal .top-left {
+  top: 0;
+  left: 0;
+}
+#video-container.normal .top-right {
+  top: 0;
+  right: 0;
+}
+#video-container.legacy .corner-box {
+  width: 23.75%;
+  height: 34%;
+}
+#video-container.legacy .top-left {
+  top: 11.5%;
+  left: 26%;
+}
+#video-container.legacy .top-right {
+  top: 11.5%;
+  right: 26%;
+}
 
 /* Note overlay */
 .note-overlay {
@@ -174,4 +213,45 @@ html, body {
   background-color: black;
   opacity: 0.5;
   width: 0%;
+}
+
+#top-bar {
+  position: fixed;
+  /* stay at the top */
+  top: 0; /* align to top */
+  left: 0;
+  width: 100%; /* full width */
+  height: 50px; /* adjust thickness */
+  z-index: 1000; /* appear above other elements */
+  display: flex;
+  justify-content: flex-end; /* align items to the right */
+  align-items: center; /* vertically center text */ /* add a little top padding so bubbles sit slightly lower on the screen */
+  padding: 8px 16px 0; /* top right bottom */
+}
+
+#top-bar > * {
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+  font-size: 24px; /* 50% larger than 16px */
+  font-weight: 600;
+  color: #0a0a0a;
+  display: inline-flex; /* allow centering of inner content */
+  align-items: center;
+  justify-content: center; /* use symmetric vertical padding so text is centered inside the pill */
+  padding: 9px 21px; /* vertical right/left */
+  line-height: 1; /* ensure line-height doesn't push text off-center */
+  background-color: #f2f2f2; /* light grey bubble */
+  border-radius: 999px; /* pill shape */
+  text-decoration: none;
+  height: auto; /* allow content to set the height */
+  max-height: calc(
+    100% - 6px
+  ); /* allow slightly taller bubbles while staying inside the bar */ /* prevent flex items from growing/shrinking unexpectedly */
+  flex: 0 0 auto;
+  margin: 0; /* spacing is handled by flex space-between */ /* subtle shadow to lift bubbles off the background */
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: box-shadow 150ms ease, transform 150ms ease;
+} /* Optional: visual gap between items without affecting space-between */ /* gap between right-aligned bubbles */
+#top-bar {
+  column-gap: 10px;
 }

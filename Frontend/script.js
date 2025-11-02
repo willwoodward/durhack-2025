@@ -152,4 +152,4 @@ function toggleNoteOverlay(show) {
   topLeftBox.style.display = show ? "none" : "block";
   topRightBox.style.display = show ? "none" : "block";
 }
-toggleNoteOverlay(true);
+//toggleNoteOverlay(true);
