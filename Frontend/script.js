@@ -167,4 +167,3 @@ function toggleNoteOverlay(show) {
 
   console.log(`🎼 Mode switched to: ${show ? "SYNTHS/CHORDS" : "DRUMS"}`);
 }
-toggleNoteOverlay(true);
